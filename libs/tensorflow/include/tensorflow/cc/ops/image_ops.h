@@ -45,6 +45,7 @@ class AdjustContrast {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -72,6 +73,7 @@ class AdjustHue {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -99,19 +101,27 @@ class AdjustSaturation {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
-/// Extracts crops from the input image tensor and bilinearly resizes them (possibly
+/// Extracts crops from the input image tensor and resizes them.
 ///
-/// with aspect ratio change) to a common output size specified by `crop_size`. This
-/// is more general than the `crop_to_bounding_box` op which extracts a fixed size
-/// slice from the input image and does not allow resizing or aspect ratio change.
+/// Extracts crops from the input image tensor and resizes them using bilinear
+/// sampling or nearest neighbor sampling (possibly with aspect ratio change) to a
+/// common output size specified by `crop_size`. This is more general than the
+/// `crop_to_bounding_box` op which extracts a fixed size slice from the input image
+/// and does not allow resizing or aspect ratio change.
 ///
 /// Returns a tensor with `crops` from the input `image` at positions defined at the
 /// bounding box locations in `boxes`. The cropped boxes are all resized (with
-/// bilinear interpolation) to a fixed `size = [crop_height, crop_width]`. The
-/// result is a 4-D tensor `[num_boxes, crop_height, crop_width, depth]`.
+/// bilinear or nearest neighbor interpolation) to a fixed
+/// `size = [crop_height, crop_width]`. The result is a 4-D tensor
+/// `[num_boxes, crop_height, crop_width, depth]`. The resizing is corner aligned.
+/// In particular, if `boxes = [[0, 0, 1, 1]]`, the method will give identical
+/// results to using `tf.image.resize_bilinear()` or
+/// `tf.image.resize_nearest_neighbor()`(depends on the `method` argument) with
+/// `align_corners=True`.
 ///
 /// Arguments:
 /// * scope: A Scope object
@@ -135,8 +145,9 @@ class AdjustSaturation {
 /// positive.
 ///
 /// Optional attributes (see `Attrs`):
-/// * method: A string specifying the interpolation method. Only 'bilinear' is
-/// supported for now.
+/// * method: A string specifying the sampling method for resizing. It can be either
+/// `"bilinear"` or `"nearest"` and default to `"bilinear"`. Currently two sampling
+/// methods are supported: Bilinear and Nearest Neighbor.
 /// * extrapolation_value: Value used for extrapolation, when applicable.
 ///
 /// Returns:
@@ -145,11 +156,12 @@ class CropAndResize {
  public:
   /// Optional attribute setters for CropAndResize
   struct Attrs {
-    /// A string specifying the interpolation method. Only 'bilinear' is
-    /// supported for now.
+    /// A string specifying the sampling method for resizing. It can be either
+    /// `"bilinear"` or `"nearest"` and default to `"bilinear"`. Currently two sampling
+    /// methods are supported: Bilinear and Nearest Neighbor.
     ///
     /// Defaults to "bilinear"
-    Attrs Method(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs Method(StringPiece x) {
       Attrs ret = *this;
       ret.method_ = x;
       return ret;
@@ -158,7 +170,7 @@ class CropAndResize {
     /// Value used for extrapolation, when applicable.
     ///
     /// Defaults to 0
-    Attrs ExtrapolationValue(float x) {
+    TF_MUST_USE_RESULT Attrs ExtrapolationValue(float x) {
       Attrs ret = *this;
       ret.extrapolation_value_ = x;
       return ret;
@@ -184,6 +196,7 @@ class CropAndResize {
     return Attrs().ExtrapolationValue(x);
   }
 
+  Operation operation;
   ::tensorflow::Output crops;
 };
 
@@ -221,7 +234,7 @@ class CropAndResizeGradBoxes {
     /// supported for now.
     ///
     /// Defaults to "bilinear"
-    Attrs Method(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs Method(StringPiece x) {
       Attrs ret = *this;
       ret.method_ = x;
       return ret;
@@ -244,6 +257,7 @@ class CropAndResizeGradBoxes {
     return Attrs().Method(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -282,7 +296,7 @@ class CropAndResizeGradImage {
     /// supported for now.
     ///
     /// Defaults to "bilinear"
-    Attrs Method(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs Method(StringPiece x) {
       Attrs ret = *this;
       ret.method_ = x;
       return ret;
@@ -305,7 +319,156 @@ class CropAndResizeGradImage {
     return Attrs().Method(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
+};
+
+/// Decode and Crop a JPEG-encoded image to a uint8 tensor.
+///
+/// The attr `channels` indicates the desired number of color channels for the
+/// decoded image.
+///
+/// Accepted values are:
+///
+/// *   0: Use the number of channels in the JPEG-encoded image.
+/// *   1: output a grayscale image.
+/// *   3: output an RGB image.
+///
+/// If needed, the JPEG-encoded image is transformed to match the requested number
+/// of color channels.
+///
+/// The attr `ratio` allows downscaling the image by an integer factor during
+/// decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
+/// downscaling the image later.
+///
+///
+/// It is equivalent to a combination of decode and crop, but much faster by only
+/// decoding partial jpeg image.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * contents: 0-D.  The JPEG-encoded image.
+/// * crop_window: 1-D.  The crop window: [crop_y, crop_x, crop_height, crop_width].
+///
+/// Optional attributes (see `Attrs`):
+/// * channels: Number of color channels for the decoded image.
+/// * ratio: Downscaling ratio.
+/// * fancy_upscaling: If true use a slower but nicer upscaling of the
+/// chroma planes (yuv420/422 only).
+/// * try_recover_truncated: If true try to recover an image from truncated input.
+/// * acceptable_fraction: The minimum required fraction of lines before a truncated
+/// input is accepted.
+/// * dct_method: string specifying a hint about the algorithm used for
+/// decompression.  Defaults to "" which maps to a system-specific
+/// default.  Currently valid values are ["INTEGER_FAST",
+/// "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
+/// jpeg library changes to a version that does not have that specific
+/// option.)
+///
+/// Returns:
+/// * `Output`: 3-D with shape `[height, width, channels]`..
+class DecodeAndCropJpeg {
+ public:
+  /// Optional attribute setters for DecodeAndCropJpeg
+  struct Attrs {
+    /// Number of color channels for the decoded image.
+    ///
+    /// Defaults to 0
+    TF_MUST_USE_RESULT Attrs Channels(int64 x) {
+      Attrs ret = *this;
+      ret.channels_ = x;
+      return ret;
+    }
+
+    /// Downscaling ratio.
+    ///
+    /// Defaults to 1
+    TF_MUST_USE_RESULT Attrs Ratio(int64 x) {
+      Attrs ret = *this;
+      ret.ratio_ = x;
+      return ret;
+    }
+
+    /// If true use a slower but nicer upscaling of the
+    /// chroma planes (yuv420/422 only).
+    ///
+    /// Defaults to true
+    TF_MUST_USE_RESULT Attrs FancyUpscaling(bool x) {
+      Attrs ret = *this;
+      ret.fancy_upscaling_ = x;
+      return ret;
+    }
+
+    /// If true try to recover an image from truncated input.
+    ///
+    /// Defaults to false
+    TF_MUST_USE_RESULT Attrs TryRecoverTruncated(bool x) {
+      Attrs ret = *this;
+      ret.try_recover_truncated_ = x;
+      return ret;
+    }
+
+    /// The minimum required fraction of lines before a truncated
+    /// input is accepted.
+    ///
+    /// Defaults to 1
+    TF_MUST_USE_RESULT Attrs AcceptableFraction(float x) {
+      Attrs ret = *this;
+      ret.acceptable_fraction_ = x;
+      return ret;
+    }
+
+    /// string specifying a hint about the algorithm used for
+    /// decompression.  Defaults to "" which maps to a system-specific
+    /// default.  Currently valid values are ["INTEGER_FAST",
+    /// "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
+    /// jpeg library changes to a version that does not have that specific
+    /// option.)
+    ///
+    /// Defaults to ""
+    TF_MUST_USE_RESULT Attrs DctMethod(StringPiece x) {
+      Attrs ret = *this;
+      ret.dct_method_ = x;
+      return ret;
+    }
+
+    int64 channels_ = 0;
+    int64 ratio_ = 1;
+    bool fancy_upscaling_ = true;
+    bool try_recover_truncated_ = false;
+    float acceptable_fraction_ = 1.0f;
+    StringPiece dct_method_ = "";
+  };
+  DecodeAndCropJpeg(const ::tensorflow::Scope& scope, ::tensorflow::Input
+                  contents, ::tensorflow::Input crop_window);
+  DecodeAndCropJpeg(const ::tensorflow::Scope& scope, ::tensorflow::Input
+                  contents, ::tensorflow::Input crop_window, const
+                  DecodeAndCropJpeg::Attrs& attrs);
+  operator ::tensorflow::Output() const { return image; }
+  operator ::tensorflow::Input() const { return image; }
+  ::tensorflow::Node* node() const { return image.node(); }
+
+  static Attrs Channels(int64 x) {
+    return Attrs().Channels(x);
+  }
+  static Attrs Ratio(int64 x) {
+    return Attrs().Ratio(x);
+  }
+  static Attrs FancyUpscaling(bool x) {
+    return Attrs().FancyUpscaling(x);
+  }
+  static Attrs TryRecoverTruncated(bool x) {
+    return Attrs().TryRecoverTruncated(x);
+  }
+  static Attrs AcceptableFraction(float x) {
+    return Attrs().AcceptableFraction(x);
+  }
+  static Attrs DctMethod(StringPiece x) {
+    return Attrs().DctMethod(x);
+  }
+
+  Operation operation;
+  ::tensorflow::Output image;
 };
 
 /// Decode the first frame of a BMP-encoded image to a uint8 tensor.
@@ -330,7 +493,7 @@ class DecodeBmp {
   /// Optional attribute setters for DecodeBmp
   struct Attrs {
     /// Defaults to 0
-    Attrs Channels(int64 x) {
+    TF_MUST_USE_RESULT Attrs Channels(int64 x) {
       Attrs ret = *this;
       ret.channels_ = x;
       return ret;
@@ -349,6 +512,7 @@ class DecodeBmp {
     return Attrs().Channels(x);
   }
 
+  Operation operation;
   ::tensorflow::Output image;
 };
 
@@ -375,6 +539,7 @@ class DecodeGif {
   operator ::tensorflow::Input() const { return image; }
   ::tensorflow::Node* node() const { return image.node(); }
 
+  Operation operation;
   ::tensorflow::Output image;
 };
 
@@ -395,6 +560,7 @@ class DecodeGif {
 /// The attr `ratio` allows downscaling the image by an integer factor during
 /// decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
 /// downscaling the image later.
+///
 ///
 /// This op also supports decoding PNGs and non-animated GIFs since the interface is
 /// the same, though it is cleaner to use `tf.image.decode_image`.
@@ -427,7 +593,7 @@ class DecodeJpeg {
     /// Number of color channels for the decoded image.
     ///
     /// Defaults to 0
-    Attrs Channels(int64 x) {
+    TF_MUST_USE_RESULT Attrs Channels(int64 x) {
       Attrs ret = *this;
       ret.channels_ = x;
       return ret;
@@ -436,7 +602,7 @@ class DecodeJpeg {
     /// Downscaling ratio.
     ///
     /// Defaults to 1
-    Attrs Ratio(int64 x) {
+    TF_MUST_USE_RESULT Attrs Ratio(int64 x) {
       Attrs ret = *this;
       ret.ratio_ = x;
       return ret;
@@ -446,7 +612,7 @@ class DecodeJpeg {
     /// chroma planes (yuv420/422 only).
     ///
     /// Defaults to true
-    Attrs FancyUpscaling(bool x) {
+    TF_MUST_USE_RESULT Attrs FancyUpscaling(bool x) {
       Attrs ret = *this;
       ret.fancy_upscaling_ = x;
       return ret;
@@ -455,7 +621,7 @@ class DecodeJpeg {
     /// If true try to recover an image from truncated input.
     ///
     /// Defaults to false
-    Attrs TryRecoverTruncated(bool x) {
+    TF_MUST_USE_RESULT Attrs TryRecoverTruncated(bool x) {
       Attrs ret = *this;
       ret.try_recover_truncated_ = x;
       return ret;
@@ -465,7 +631,7 @@ class DecodeJpeg {
     /// input is accepted.
     ///
     /// Defaults to 1
-    Attrs AcceptableFraction(float x) {
+    TF_MUST_USE_RESULT Attrs AcceptableFraction(float x) {
       Attrs ret = *this;
       ret.acceptable_fraction_ = x;
       return ret;
@@ -479,7 +645,7 @@ class DecodeJpeg {
     /// option.)
     ///
     /// Defaults to ""
-    Attrs DctMethod(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs DctMethod(StringPiece x) {
       Attrs ret = *this;
       ret.dct_method_ = x;
       return ret;
@@ -518,6 +684,7 @@ class DecodeJpeg {
     return Attrs().DctMethod(x);
   }
 
+  Operation operation;
   ::tensorflow::Output image;
 };
 
@@ -555,14 +722,14 @@ class DecodePng {
     /// Number of color channels for the decoded image.
     ///
     /// Defaults to 0
-    Attrs Channels(int64 x) {
+    TF_MUST_USE_RESULT Attrs Channels(int64 x) {
       Attrs ret = *this;
       ret.channels_ = x;
       return ret;
     }
 
     /// Defaults to DT_UINT8
-    Attrs Dtype(DataType x) {
+    TF_MUST_USE_RESULT Attrs Dtype(DataType x) {
       Attrs ret = *this;
       ret.dtype_ = x;
       return ret;
@@ -585,6 +752,7 @@ class DecodePng {
     return Attrs().Dtype(x);
   }
 
+  Operation operation;
   ::tensorflow::Output image;
 };
 
@@ -596,9 +764,9 @@ class DecodePng {
 /// bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
 /// height of the underlying image.
 ///
-/// For example, if an image is 100 x 200 pixels and the bounding box is
-/// `[0.1, 0.2, 0.5, 0.9]`, the bottom-left and upper-right coordinates of the
-/// bounding box will be `(10, 40)` to `(50, 180)`.
+/// For example, if an image is 100 x 200 pixels (height x width) and the bounding
+/// box is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of
+/// the bounding box will be `(40, 10)` to `(180, 50)` (in (x,y) coordinates).
 ///
 /// Parts of the bounding box may fall outside the image.
 ///
@@ -619,6 +787,7 @@ class DrawBoundingBoxes {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -666,7 +835,7 @@ class EncodeJpeg {
     /// Per pixel image format.
     ///
     /// Defaults to ""
-    Attrs Format(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs Format(StringPiece x) {
       Attrs ret = *this;
       ret.format_ = x;
       return ret;
@@ -675,7 +844,7 @@ class EncodeJpeg {
     /// Quality of the compression from 0 to 100 (higher is better and slower).
     ///
     /// Defaults to 95
-    Attrs Quality(int64 x) {
+    TF_MUST_USE_RESULT Attrs Quality(int64 x) {
       Attrs ret = *this;
       ret.quality_ = x;
       return ret;
@@ -684,7 +853,7 @@ class EncodeJpeg {
     /// If True, create a JPEG that loads progressively (coarse to fine).
     ///
     /// Defaults to false
-    Attrs Progressive(bool x) {
+    TF_MUST_USE_RESULT Attrs Progressive(bool x) {
       Attrs ret = *this;
       ret.progressive_ = x;
       return ret;
@@ -693,7 +862,7 @@ class EncodeJpeg {
     /// If True, spend CPU/RAM to reduce size with no quality change.
     ///
     /// Defaults to false
-    Attrs OptimizeSize(bool x) {
+    TF_MUST_USE_RESULT Attrs OptimizeSize(bool x) {
       Attrs ret = *this;
       ret.optimize_size_ = x;
       return ret;
@@ -702,7 +871,7 @@ class EncodeJpeg {
     /// See http://en.wikipedia.org/wiki/Chroma_subsampling.
     ///
     /// Defaults to true
-    Attrs ChromaDownsampling(bool x) {
+    TF_MUST_USE_RESULT Attrs ChromaDownsampling(bool x) {
       Attrs ret = *this;
       ret.chroma_downsampling_ = x;
       return ret;
@@ -712,7 +881,7 @@ class EncodeJpeg {
     /// pixels per inch (`'in'`) or centimeter (`'cm'`).
     ///
     /// Defaults to "in"
-    Attrs DensityUnit(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs DensityUnit(StringPiece x) {
       Attrs ret = *this;
       ret.density_unit_ = x;
       return ret;
@@ -721,7 +890,7 @@ class EncodeJpeg {
     /// Horizontal pixels per density unit.
     ///
     /// Defaults to 300
-    Attrs XDensity(int64 x) {
+    TF_MUST_USE_RESULT Attrs XDensity(int64 x) {
       Attrs ret = *this;
       ret.x_density_ = x;
       return ret;
@@ -730,7 +899,7 @@ class EncodeJpeg {
     /// Vertical pixels per density unit.
     ///
     /// Defaults to 300
-    Attrs YDensity(int64 x) {
+    TF_MUST_USE_RESULT Attrs YDensity(int64 x) {
       Attrs ret = *this;
       ret.y_density_ = x;
       return ret;
@@ -739,7 +908,7 @@ class EncodeJpeg {
     /// If not empty, embed this XMP metadata in the image header.
     ///
     /// Defaults to ""
-    Attrs XmpMetadata(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs XmpMetadata(StringPiece x) {
       Attrs ret = *this;
       ret.xmp_metadata_ = x;
       return ret;
@@ -790,6 +959,7 @@ class EncodeJpeg {
     return Attrs().XmpMetadata(x);
   }
 
+  Operation operation;
   ::tensorflow::Output contents;
 };
 
@@ -823,7 +993,7 @@ class EncodePng {
     /// Compression level.
     ///
     /// Defaults to -1
-    Attrs Compression(int64 x) {
+    TF_MUST_USE_RESULT Attrs Compression(int64 x) {
       Attrs ret = *this;
       ret.compression_ = x;
       return ret;
@@ -842,6 +1012,7 @@ class EncodePng {
     return Attrs().Compression(x);
   }
 
+  Operation operation;
   ::tensorflow::Output contents;
 };
 
@@ -900,7 +1071,7 @@ class ExtractGlimpse {
     /// upper left corner of the input images.
     ///
     /// Defaults to true
-    Attrs Centered(bool x) {
+    TF_MUST_USE_RESULT Attrs Centered(bool x) {
       Attrs ret = *this;
       ret.centered_ = x;
       return ret;
@@ -909,7 +1080,7 @@ class ExtractGlimpse {
     /// indicates if the offset coordinates are normalized.
     ///
     /// Defaults to true
-    Attrs Normalized(bool x) {
+    TF_MUST_USE_RESULT Attrs Normalized(bool x) {
       Attrs ret = *this;
       ret.normalized_ = x;
       return ret;
@@ -919,7 +1090,7 @@ class ExtractGlimpse {
     /// uniform distribution or a Gaussian distribution.
     ///
     /// Defaults to true
-    Attrs UniformNoise(bool x) {
+    TF_MUST_USE_RESULT Attrs UniformNoise(bool x) {
       Attrs ret = *this;
       ret.uniform_noise_ = x;
       return ret;
@@ -948,7 +1119,54 @@ class ExtractGlimpse {
     return Attrs().UniformNoise(x);
   }
 
+  Operation operation;
   ::tensorflow::Output glimpse;
+};
+
+/// Extract the shape information of a JPEG-encoded image.
+///
+/// This op only parses the image header, so it is much faster than DecodeJpeg.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * contents: 0-D. The JPEG-encoded image.
+///
+/// Optional attributes (see `Attrs`):
+/// * output_type: (Optional) The output type of the operation (int32 or int64).
+/// Defaults to int32.
+///
+/// Returns:
+/// * `Output`: 1-D. The image shape with format [height, width, channels].
+class ExtractJpegShape {
+ public:
+  /// Optional attribute setters for ExtractJpegShape
+  struct Attrs {
+    /// (Optional) The output type of the operation (int32 or int64).
+    /// Defaults to int32.
+    ///
+    /// Defaults to DT_INT32
+    TF_MUST_USE_RESULT Attrs OutputType(DataType x) {
+      Attrs ret = *this;
+      ret.output_type_ = x;
+      return ret;
+    }
+
+    DataType output_type_ = DT_INT32;
+  };
+  ExtractJpegShape(const ::tensorflow::Scope& scope, ::tensorflow::Input
+                 contents);
+  ExtractJpegShape(const ::tensorflow::Scope& scope, ::tensorflow::Input
+                 contents, const ExtractJpegShape::Attrs& attrs);
+  operator ::tensorflow::Output() const { return image_shape; }
+  operator ::tensorflow::Input() const { return image_shape; }
+  ::tensorflow::Node* node() const { return image_shape.node(); }
+
+  static Attrs OutputType(DataType x) {
+    return Attrs().OutputType(x);
+  }
+
+  Operation operation;
+  ::tensorflow::Output image_shape;
 };
 
 /// Convert one or more images from HSV to RGB.
@@ -972,6 +1190,7 @@ class HSVToRGB {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -1017,7 +1236,7 @@ class NonMaxSuppression {
     /// overlap too much with respect to IOU.
     ///
     /// Defaults to 0.5
-    Attrs IouThreshold(float x) {
+    TF_MUST_USE_RESULT Attrs IouThreshold(float x) {
       Attrs ret = *this;
       ret.iou_threshold_ = x;
       return ret;
@@ -1039,6 +1258,7 @@ class NonMaxSuppression {
     return Attrs().IouThreshold(x);
   }
 
+  Operation operation;
   ::tensorflow::Output selected_indices;
 };
 
@@ -1085,6 +1305,180 @@ class NonMaxSuppressionV2 {
   operator ::tensorflow::Input() const { return selected_indices; }
   ::tensorflow::Node* node() const { return selected_indices.node(); }
 
+  Operation operation;
+  ::tensorflow::Output selected_indices;
+};
+
+/// Greedily selects a subset of bounding boxes in descending order of score,
+///
+/// pruning away boxes that have high intersection-over-union (IOU) overlap
+/// with previously selected boxes.  Bounding boxes with score less than
+/// `score_threshold` are removed.  Bounding boxes are supplied as
+/// [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+/// diagonal pair of box corners and the coordinates can be provided as normalized
+/// (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+/// is agnostic to where the origin is in the coordinate system and more
+/// generally is invariant to orthogonal transformations and translations
+/// of the coordinate system; thus translating or reflections of the coordinate
+/// system result in the same boxes being selected by the algorithm.
+/// The output of this operation is a set of integers indexing into the input
+/// collection of bounding boxes representing the selected boxes.  The bounding
+/// box coordinates corresponding to the selected indices can then be obtained
+/// using the `tf.gather operation`.  For example:
+///   selected_indices = tf.image.non_max_suppression_v2(
+///       boxes, scores, max_output_size, iou_threshold, score_threshold)
+///   selected_boxes = tf.gather(boxes, selected_indices)
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * boxes: A 2-D float tensor of shape `[num_boxes, 4]`.
+/// * scores: A 1-D float tensor of shape `[num_boxes]` representing a single
+/// score corresponding to each box (each row of boxes).
+/// * max_output_size: A scalar integer tensor representing the maximum number of
+/// boxes to be selected by non max suppression.
+/// * iou_threshold: A 0-D float tensor representing the threshold for deciding whether
+/// boxes overlap too much with respect to IOU.
+/// * score_threshold: A 0-D float tensor representing the threshold for deciding when to remove
+/// boxes based on score.
+///
+/// Returns:
+/// * `Output`: A 1-D integer tensor of shape `[M]` representing the selected
+/// indices from the boxes tensor, where `M <= max_output_size`.
+class NonMaxSuppressionV3 {
+ public:
+  NonMaxSuppressionV3(const ::tensorflow::Scope& scope, ::tensorflow::Input
+                    boxes, ::tensorflow::Input scores, ::tensorflow::Input
+                    max_output_size, ::tensorflow::Input iou_threshold,
+                    ::tensorflow::Input score_threshold);
+  operator ::tensorflow::Output() const { return selected_indices; }
+  operator ::tensorflow::Input() const { return selected_indices; }
+  ::tensorflow::Node* node() const { return selected_indices.node(); }
+
+  Operation operation;
+  ::tensorflow::Output selected_indices;
+};
+
+/// Greedily selects a subset of bounding boxes in descending order of score,
+///
+/// pruning away boxes that have high intersection-over-union (IOU) overlap
+/// with previously selected boxes.  Bounding boxes with score less than
+/// `score_threshold` are removed.  Bounding boxes are supplied as
+/// [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+/// diagonal pair of box corners and the coordinates can be provided as normalized
+/// (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+/// is agnostic to where the origin is in the coordinate system and more
+/// generally is invariant to orthogonal transformations and translations
+/// of the coordinate system; thus translating or reflections of the coordinate
+/// system result in the same boxes being selected by the algorithm.
+/// The output of this operation is a set of integers indexing into the input
+/// collection of bounding boxes representing the selected boxes.  The bounding
+/// box coordinates corresponding to the selected indices can then be obtained
+/// using the `tf.gather operation`.  For example:
+///   selected_indices = tf.image.non_max_suppression_v2(
+///       boxes, scores, max_output_size, iou_threshold, score_threshold)
+///   selected_boxes = tf.gather(boxes, selected_indices)
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * boxes: A 2-D float tensor of shape `[num_boxes, 4]`.
+/// * scores: A 1-D float tensor of shape `[num_boxes]` representing a single
+/// score corresponding to each box (each row of boxes).
+/// * max_output_size: A scalar integer tensor representing the maximum number of
+/// boxes to be selected by non max suppression.
+/// * iou_threshold: A 0-D float tensor representing the threshold for deciding whether
+/// boxes overlap too much with respect to IOU.
+/// * score_threshold: A 0-D float tensor representing the threshold for deciding when to remove
+/// boxes based on score.
+///
+/// Optional attributes (see `Attrs`):
+/// * pad_to_max_output_size: If true, the output `selected_indices` is padded to be of length
+/// `max_output_size`. Defaults to false.
+///
+/// Returns:
+/// * `Output` selected_indices: A 1-D integer tensor of shape `[M]` representing the selected
+/// indices from the boxes tensor, where `M <= max_output_size`.
+/// * `Output` valid_outputs: A 0-D integer tensor representing the number of valid elements in
+/// `selected_indices`, with the valid elements appearing first.
+class NonMaxSuppressionV4 {
+ public:
+  /// Optional attribute setters for NonMaxSuppressionV4
+  struct Attrs {
+    /// If true, the output `selected_indices` is padded to be of length
+    /// `max_output_size`. Defaults to false.
+    ///
+    /// Defaults to false
+    TF_MUST_USE_RESULT Attrs PadToMaxOutputSize(bool x) {
+      Attrs ret = *this;
+      ret.pad_to_max_output_size_ = x;
+      return ret;
+    }
+
+    bool pad_to_max_output_size_ = false;
+  };
+  NonMaxSuppressionV4(const ::tensorflow::Scope& scope, ::tensorflow::Input
+                    boxes, ::tensorflow::Input scores, ::tensorflow::Input
+                    max_output_size, ::tensorflow::Input iou_threshold,
+                    ::tensorflow::Input score_threshold);
+  NonMaxSuppressionV4(const ::tensorflow::Scope& scope, ::tensorflow::Input
+                    boxes, ::tensorflow::Input scores, ::tensorflow::Input
+                    max_output_size, ::tensorflow::Input iou_threshold,
+                    ::tensorflow::Input score_threshold, const
+                    NonMaxSuppressionV4::Attrs& attrs);
+
+  static Attrs PadToMaxOutputSize(bool x) {
+    return Attrs().PadToMaxOutputSize(x);
+  }
+
+  Operation operation;
+  ::tensorflow::Output selected_indices;
+  ::tensorflow::Output valid_outputs;
+};
+
+/// Greedily selects a subset of bounding boxes in descending order of score,
+///
+/// pruning away boxes that have high overlaps
+/// with previously selected boxes.  Bounding boxes with score less than
+/// `score_threshold` are removed. N-by-n overlap values are supplied as square matrix,
+/// which allows for defining a custom overlap criterium (eg. intersection over union,
+/// intersection over area, etc.).
+///
+/// The output of this operation is a set of integers indexing into the input
+/// collection of bounding boxes representing the selected boxes.  The bounding
+/// box coordinates corresponding to the selected indices can then be obtained
+/// using the `tf.gather operation`.  For example:
+///
+///   selected_indices = tf.image.non_max_suppression_with_overlaps(
+///       overlaps, scores, max_output_size, overlap_threshold, score_threshold)
+///   selected_boxes = tf.gather(boxes, selected_indices)
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * overlaps: A 2-D float tensor of shape `[num_boxes, num_boxes]` representing
+/// the n-by-n box overlap values.
+/// * scores: A 1-D float tensor of shape `[num_boxes]` representing a single
+/// score corresponding to each box (each row of boxes).
+/// * max_output_size: A scalar integer tensor representing the maximum number of
+/// boxes to be selected by non max suppression.
+/// * overlap_threshold: A 0-D float tensor representing the threshold for deciding whether
+/// boxes overlap too.
+/// * score_threshold: A 0-D float tensor representing the threshold for deciding when to remove
+/// boxes based on score.
+///
+/// Returns:
+/// * `Output`: A 1-D integer tensor of shape `[M]` representing the selected
+/// indices from the boxes tensor, where `M <= max_output_size`.
+class NonMaxSuppressionWithOverlaps {
+ public:
+  NonMaxSuppressionWithOverlaps(const ::tensorflow::Scope& scope,
+                              ::tensorflow::Input overlaps, ::tensorflow::Input
+                              scores, ::tensorflow::Input max_output_size,
+                              ::tensorflow::Input overlap_threshold,
+                              ::tensorflow::Input score_threshold);
+  operator ::tensorflow::Output() const { return selected_indices; }
+  operator ::tensorflow::Input() const { return selected_indices; }
+  ::tensorflow::Node* node() const { return selected_indices.node(); }
+
+  Operation operation;
   ::tensorflow::Output selected_indices;
 };
 
@@ -1099,9 +1493,8 @@ class NonMaxSuppressionV2 {
 /// new size for the images.
 ///
 /// Optional attributes (see `Attrs`):
-/// * align_corners: If true, rescale input by (new_height - 1) / (height - 1), which
-/// exactly aligns the 4 corners of images and resized images. If false, rescale
-/// by new_height / height. Treat similarly the width dimension.
+/// * align_corners: If true, the centers of the 4 corner pixels of the input and output tensors are
+/// aligned, preserving the values at the corner pixels. Defaults to false.
 ///
 /// Returns:
 /// * `Output` resized_images: 4-D with shape
@@ -1112,12 +1505,11 @@ class QuantizedResizeBilinear {
  public:
   /// Optional attribute setters for QuantizedResizeBilinear
   struct Attrs {
-    /// If true, rescale input by (new_height - 1) / (height - 1), which
-    /// exactly aligns the 4 corners of images and resized images. If false, rescale
-    /// by new_height / height. Treat similarly the width dimension.
+    /// If true, the centers of the 4 corner pixels of the input and output tensors are
+    /// aligned, preserving the values at the corner pixels. Defaults to false.
     ///
     /// Defaults to false
-    Attrs AlignCorners(bool x) {
+    TF_MUST_USE_RESULT Attrs AlignCorners(bool x) {
       Attrs ret = *this;
       ret.align_corners_ = x;
       return ret;
@@ -1137,6 +1529,7 @@ class QuantizedResizeBilinear {
     return Attrs().AlignCorners(x);
   }
 
+  Operation operation;
   ::tensorflow::Output resized_images;
   ::tensorflow::Output out_min;
   ::tensorflow::Output out_max;
@@ -1165,12 +1558,23 @@ class RGBToHSV {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
 /// Resize `images` to `size` using area interpolation.
 ///
 /// Input images can be of different types but output images are always float.
+///
+/// The range of pixel values for the output image might be slightly different
+/// from the range for the input image because of limited numerical precision.
+/// To guarantee an output range, for example `[0.0, 1.0]`, apply
+/// `tf.clip_by_value` to the output.
+///
+/// Each output pixel is computed by first transforming the pixel's footprint into
+/// the input tensor and then averaging the pixels that intersect the footprint. An
+/// input pixel's contribution to the average is weighted by the fraction of its
+/// area that intersects the footprint.  This is the same as OpenCV's INTER_AREA.
 ///
 /// Arguments:
 /// * scope: A Scope object
@@ -1179,9 +1583,8 @@ class RGBToHSV {
 /// new size for the images.
 ///
 /// Optional attributes (see `Attrs`):
-/// * align_corners: If true, rescale input by (new_height - 1) / (height - 1), which
-/// exactly aligns the 4 corners of images and resized images. If false, rescale
-/// by new_height / height. Treat similarly the width dimension.
+/// * align_corners: If true, the centers of the 4 corner pixels of the input and output tensors are
+/// aligned, preserving the values at the corner pixels. Defaults to false.
 ///
 /// Returns:
 /// * `Output`: 4-D with shape
@@ -1190,12 +1593,11 @@ class ResizeArea {
  public:
   /// Optional attribute setters for ResizeArea
   struct Attrs {
-    /// If true, rescale input by (new_height - 1) / (height - 1), which
-    /// exactly aligns the 4 corners of images and resized images. If false, rescale
-    /// by new_height / height. Treat similarly the width dimension.
+    /// If true, the centers of the 4 corner pixels of the input and output tensors are
+    /// aligned, preserving the values at the corner pixels. Defaults to false.
     ///
     /// Defaults to false
-    Attrs AlignCorners(bool x) {
+    TF_MUST_USE_RESULT Attrs AlignCorners(bool x) {
       Attrs ret = *this;
       ret.align_corners_ = x;
       return ret;
@@ -1215,6 +1617,7 @@ class ResizeArea {
     return Attrs().AlignCorners(x);
   }
 
+  Operation operation;
   ::tensorflow::Output resized_images;
 };
 
@@ -1229,9 +1632,8 @@ class ResizeArea {
 /// new size for the images.
 ///
 /// Optional attributes (see `Attrs`):
-/// * align_corners: If true, rescale input by (new_height - 1) / (height - 1), which
-/// exactly aligns the 4 corners of images and resized images. If false, rescale
-/// by new_height / height. Treat similarly the width dimension.
+/// * align_corners: If true, the centers of the 4 corner pixels of the input and output tensors are
+/// aligned, preserving the values at the corner pixels. Defaults to false.
 ///
 /// Returns:
 /// * `Output`: 4-D with shape
@@ -1240,12 +1642,11 @@ class ResizeBicubic {
  public:
   /// Optional attribute setters for ResizeBicubic
   struct Attrs {
-    /// If true, rescale input by (new_height - 1) / (height - 1), which
-    /// exactly aligns the 4 corners of images and resized images. If false, rescale
-    /// by new_height / height. Treat similarly the width dimension.
+    /// If true, the centers of the 4 corner pixels of the input and output tensors are
+    /// aligned, preserving the values at the corner pixels. Defaults to false.
     ///
     /// Defaults to false
-    Attrs AlignCorners(bool x) {
+    TF_MUST_USE_RESULT Attrs AlignCorners(bool x) {
       Attrs ret = *this;
       ret.align_corners_ = x;
       return ret;
@@ -1265,6 +1666,7 @@ class ResizeBicubic {
     return Attrs().AlignCorners(x);
   }
 
+  Operation operation;
   ::tensorflow::Output resized_images;
 };
 
@@ -1279,9 +1681,8 @@ class ResizeBicubic {
 /// new size for the images.
 ///
 /// Optional attributes (see `Attrs`):
-/// * align_corners: If true, rescale input by (new_height - 1) / (height - 1), which
-/// exactly aligns the 4 corners of images and resized images. If false, rescale
-/// by new_height / height. Treat similarly the width dimension.
+/// * align_corners: If true, the centers of the 4 corner pixels of the input and output tensors are
+/// aligned, preserving the values at the corner pixels. Defaults to false.
 ///
 /// Returns:
 /// * `Output`: 4-D with shape
@@ -1290,12 +1691,11 @@ class ResizeBilinear {
  public:
   /// Optional attribute setters for ResizeBilinear
   struct Attrs {
-    /// If true, rescale input by (new_height - 1) / (height - 1), which
-    /// exactly aligns the 4 corners of images and resized images. If false, rescale
-    /// by new_height / height. Treat similarly the width dimension.
+    /// If true, the centers of the 4 corner pixels of the input and output tensors are
+    /// aligned, preserving the values at the corner pixels. Defaults to false.
     ///
     /// Defaults to false
-    Attrs AlignCorners(bool x) {
+    TF_MUST_USE_RESULT Attrs AlignCorners(bool x) {
       Attrs ret = *this;
       ret.align_corners_ = x;
       return ret;
@@ -1315,6 +1715,7 @@ class ResizeBilinear {
     return Attrs().AlignCorners(x);
   }
 
+  Operation operation;
   ::tensorflow::Output resized_images;
 };
 
@@ -1327,9 +1728,8 @@ class ResizeBilinear {
 /// new size for the images.
 ///
 /// Optional attributes (see `Attrs`):
-/// * align_corners: If true, rescale input by (new_height - 1) / (height - 1), which
-/// exactly aligns the 4 corners of images and resized images. If false, rescale
-/// by new_height / height. Treat similarly the width dimension.
+/// * align_corners: If true, the centers of the 4 corner pixels of the input and output tensors are
+/// aligned, preserving the values at the corner pixels. Defaults to false.
 ///
 /// Returns:
 /// * `Output`: 4-D with shape
@@ -1338,12 +1738,11 @@ class ResizeNearestNeighbor {
  public:
   /// Optional attribute setters for ResizeNearestNeighbor
   struct Attrs {
-    /// If true, rescale input by (new_height - 1) / (height - 1), which
-    /// exactly aligns the 4 corners of images and resized images. If false, rescale
-    /// by new_height / height. Treat similarly the width dimension.
+    /// If true, the centers of the 4 corner pixels of the input and output tensors are
+    /// aligned, preserving the values at the corner pixels. Defaults to false.
     ///
     /// Defaults to false
-    Attrs AlignCorners(bool x) {
+    TF_MUST_USE_RESULT Attrs AlignCorners(bool x) {
       Attrs ret = *this;
       ret.align_corners_ = x;
       return ret;
@@ -1364,6 +1763,7 @@ class ResizeNearestNeighbor {
     return Attrs().AlignCorners(x);
   }
 
+  Operation operation;
   ::tensorflow::Output resized_images;
 };
 
@@ -1397,7 +1797,7 @@ class ResizeNearestNeighbor {
 ///     # Draw the bounding box in an image summary.
 ///     image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
 ///                                                   bbox_for_draw)
-///     tf.image_summary('images_with_box', image_with_box)
+///     tf.summary.image('images_with_box', image_with_box)
 ///
 ///     # Employ the bounding box to distort the image.
 ///     distorted_image = tf.slice(image, begin, size)
@@ -1426,7 +1826,7 @@ class ResizeNearestNeighbor {
 /// * aspect_ratio_range: The cropped area of the image must have an aspect ratio =
 /// width / height within this range.
 /// * area_range: The cropped area of the image must contain a fraction of the
-/// supplied image within in this range.
+/// supplied image within this range.
 /// * max_attempts: Number of attempts at generating a cropped region of the image
 /// of the specified constraints. After `max_attempts` failures, return the entire
 /// image.
@@ -1450,7 +1850,7 @@ class SampleDistortedBoundingBox {
     /// seed.
     ///
     /// Defaults to 0
-    Attrs Seed(int64 x) {
+    TF_MUST_USE_RESULT Attrs Seed(int64 x) {
       Attrs ret = *this;
       ret.seed_ = x;
       return ret;
@@ -1459,7 +1859,7 @@ class SampleDistortedBoundingBox {
     /// A second seed to avoid seed collision.
     ///
     /// Defaults to 0
-    Attrs Seed2(int64 x) {
+    TF_MUST_USE_RESULT Attrs Seed2(int64 x) {
       Attrs ret = *this;
       ret.seed2_ = x;
       return ret;
@@ -1471,7 +1871,7 @@ class SampleDistortedBoundingBox {
     /// any of the bounding boxes supplied.
     ///
     /// Defaults to 0.1
-    Attrs MinObjectCovered(float x) {
+    TF_MUST_USE_RESULT Attrs MinObjectCovered(float x) {
       Attrs ret = *this;
       ret.min_object_covered_ = x;
       return ret;
@@ -1481,17 +1881,17 @@ class SampleDistortedBoundingBox {
     /// width / height within this range.
     ///
     /// Defaults to [0.75, 1.33]
-    Attrs AspectRatioRange(const gtl::ArraySlice<float>& x) {
+    TF_MUST_USE_RESULT Attrs AspectRatioRange(const gtl::ArraySlice<float>& x) {
       Attrs ret = *this;
       ret.aspect_ratio_range_ = x;
       return ret;
     }
 
     /// The cropped area of the image must contain a fraction of the
-    /// supplied image within in this range.
+    /// supplied image within this range.
     ///
     /// Defaults to [0.05, 1]
-    Attrs AreaRange(const gtl::ArraySlice<float>& x) {
+    TF_MUST_USE_RESULT Attrs AreaRange(const gtl::ArraySlice<float>& x) {
       Attrs ret = *this;
       ret.area_range_ = x;
       return ret;
@@ -1502,7 +1902,7 @@ class SampleDistortedBoundingBox {
     /// image.
     ///
     /// Defaults to 100
-    Attrs MaxAttempts(int64 x) {
+    TF_MUST_USE_RESULT Attrs MaxAttempts(int64 x) {
       Attrs ret = *this;
       ret.max_attempts_ = x;
       return ret;
@@ -1513,7 +1913,7 @@ class SampleDistortedBoundingBox {
     /// raise an error.
     ///
     /// Defaults to false
-    Attrs UseImageIfNoBoundingBoxes(bool x) {
+    TF_MUST_USE_RESULT Attrs UseImageIfNoBoundingBoxes(bool x) {
       Attrs ret = *this;
       ret.use_image_if_no_bounding_boxes_ = x;
       return ret;
@@ -1522,10 +1922,19 @@ class SampleDistortedBoundingBox {
     int64 seed_ = 0;
     int64 seed2_ = 0;
     float min_object_covered_ = 0.1f;
-    gtl::ArraySlice<float> aspect_ratio_range_ = {0.75f, 1.33f};
-    gtl::ArraySlice<float> area_range_ = {0.05f, 1.0f};
+    gtl::ArraySlice<float> aspect_ratio_range_ = Default_aspect_ratio_range();
+    gtl::ArraySlice<float> area_range_ = Default_area_range();
     int64 max_attempts_ = 100;
     bool use_image_if_no_bounding_boxes_ = false;
+  private:
+    static gtl::ArraySlice<float> Default_aspect_ratio_range() {
+      static const float kStorage[] = {0.75f, 1.33f};
+      return gtl::ArraySlice<float>(kStorage);
+    }
+    static gtl::ArraySlice<float> Default_area_range() {
+      static const float kStorage[] = {0.05f, 1.0f};
+      return gtl::ArraySlice<float>(kStorage);
+    }
   };
   SampleDistortedBoundingBox(const ::tensorflow::Scope& scope,
                            ::tensorflow::Input image_size, ::tensorflow::Input
@@ -1557,6 +1966,7 @@ class SampleDistortedBoundingBox {
     return Attrs().UseImageIfNoBoundingBoxes(x);
   }
 
+  Operation operation;
   ::tensorflow::Output begin;
   ::tensorflow::Output size;
   ::tensorflow::Output bboxes;
@@ -1592,7 +2002,7 @@ class SampleDistortedBoundingBox {
 ///     # Draw the bounding box in an image summary.
 ///     image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
 ///                                                   bbox_for_draw)
-///     tf.image_summary('images_with_box', image_with_box)
+///     tf.summary.image('images_with_box', image_with_box)
 ///
 ///     # Employ the bounding box to distort the image.
 ///     distorted_image = tf.slice(image, begin, size)
@@ -1621,7 +2031,7 @@ class SampleDistortedBoundingBox {
 /// * aspect_ratio_range: The cropped area of the image must have an aspect ratio =
 /// width / height within this range.
 /// * area_range: The cropped area of the image must contain a fraction of the
-/// supplied image within in this range.
+/// supplied image within this range.
 /// * max_attempts: Number of attempts at generating a cropped region of the image
 /// of the specified constraints. After `max_attempts` failures, return the entire
 /// image.
@@ -1645,7 +2055,7 @@ class SampleDistortedBoundingBoxV2 {
     /// seed.
     ///
     /// Defaults to 0
-    Attrs Seed(int64 x) {
+    TF_MUST_USE_RESULT Attrs Seed(int64 x) {
       Attrs ret = *this;
       ret.seed_ = x;
       return ret;
@@ -1654,7 +2064,7 @@ class SampleDistortedBoundingBoxV2 {
     /// A second seed to avoid seed collision.
     ///
     /// Defaults to 0
-    Attrs Seed2(int64 x) {
+    TF_MUST_USE_RESULT Attrs Seed2(int64 x) {
       Attrs ret = *this;
       ret.seed2_ = x;
       return ret;
@@ -1664,17 +2074,17 @@ class SampleDistortedBoundingBoxV2 {
     /// width / height within this range.
     ///
     /// Defaults to [0.75, 1.33]
-    Attrs AspectRatioRange(const gtl::ArraySlice<float>& x) {
+    TF_MUST_USE_RESULT Attrs AspectRatioRange(const gtl::ArraySlice<float>& x) {
       Attrs ret = *this;
       ret.aspect_ratio_range_ = x;
       return ret;
     }
 
     /// The cropped area of the image must contain a fraction of the
-    /// supplied image within in this range.
+    /// supplied image within this range.
     ///
     /// Defaults to [0.05, 1]
-    Attrs AreaRange(const gtl::ArraySlice<float>& x) {
+    TF_MUST_USE_RESULT Attrs AreaRange(const gtl::ArraySlice<float>& x) {
       Attrs ret = *this;
       ret.area_range_ = x;
       return ret;
@@ -1685,7 +2095,7 @@ class SampleDistortedBoundingBoxV2 {
     /// image.
     ///
     /// Defaults to 100
-    Attrs MaxAttempts(int64 x) {
+    TF_MUST_USE_RESULT Attrs MaxAttempts(int64 x) {
       Attrs ret = *this;
       ret.max_attempts_ = x;
       return ret;
@@ -1696,7 +2106,7 @@ class SampleDistortedBoundingBoxV2 {
     /// raise an error.
     ///
     /// Defaults to false
-    Attrs UseImageIfNoBoundingBoxes(bool x) {
+    TF_MUST_USE_RESULT Attrs UseImageIfNoBoundingBoxes(bool x) {
       Attrs ret = *this;
       ret.use_image_if_no_bounding_boxes_ = x;
       return ret;
@@ -1704,10 +2114,19 @@ class SampleDistortedBoundingBoxV2 {
 
     int64 seed_ = 0;
     int64 seed2_ = 0;
-    gtl::ArraySlice<float> aspect_ratio_range_ = {0.75f, 1.33f};
-    gtl::ArraySlice<float> area_range_ = {0.05f, 1.0f};
+    gtl::ArraySlice<float> aspect_ratio_range_ = Default_aspect_ratio_range();
+    gtl::ArraySlice<float> area_range_ = Default_area_range();
     int64 max_attempts_ = 100;
     bool use_image_if_no_bounding_boxes_ = false;
+  private:
+    static gtl::ArraySlice<float> Default_aspect_ratio_range() {
+      static const float kStorage[] = {0.75f, 1.33f};
+      return gtl::ArraySlice<float>(kStorage);
+    }
+    static gtl::ArraySlice<float> Default_area_range() {
+      static const float kStorage[] = {0.05f, 1.0f};
+      return gtl::ArraySlice<float>(kStorage);
+    }
   };
   SampleDistortedBoundingBoxV2(const ::tensorflow::Scope& scope,
                              ::tensorflow::Input image_size,
@@ -1738,6 +2157,7 @@ class SampleDistortedBoundingBoxV2 {
     return Attrs().UseImageIfNoBoundingBoxes(x);
   }
 
+  Operation operation;
   ::tensorflow::Output begin;
   ::tensorflow::Output size;
   ::tensorflow::Output bboxes;

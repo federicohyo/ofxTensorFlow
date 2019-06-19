@@ -13,14 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_POOLING_OPS_3D_H_
-#define TENSORFLOW_KERNELS_POOLING_OPS_3D_H_
+#ifndef TENSORFLOW_CORE_KERNELS_POOLING_OPS_3D_H_
+#define TENSORFLOW_CORE_KERNELS_POOLING_OPS_3D_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
+
+enum PoolingType { MAX, AVG };
+
+template <typename Device, typename T, PoolingType Type>
+struct LaunchPoolingOp;
+
+template <typename Device, typename T>
+struct LaunchAvgPooling3dGradOp;
+
+template <typename Device, typename T>
+struct LaunchMaxPooling3dGradOp;
+
+template <typename Device, typename T>
+struct LaunchMaxPooling3dGradGradOp;
 
 // A helper class to manage sizes and shapes for 3d pooling operations.
 struct Pool3dParameters {
@@ -63,4 +77,4 @@ struct Pool3dParameters {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_POOLING_OPS_3D_H_
+#endif  // TENSORFLOW_CORE_KERNELS_POOLING_OPS_3D_H_

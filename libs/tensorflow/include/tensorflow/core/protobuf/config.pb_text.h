@@ -9,6 +9,26 @@
 
 namespace tensorflow {
 
+// Message-text conversion for tensorflow.GPUOptions.Experimental.VirtualDevices
+string ProtoDebugString(
+    const ::tensorflow::GPUOptions_Experimental_VirtualDevices& msg);
+string ProtoShortDebugString(
+    const ::tensorflow::GPUOptions_Experimental_VirtualDevices& msg);
+bool ProtoParseFromString(
+    const string& s,
+    ::tensorflow::GPUOptions_Experimental_VirtualDevices* msg)
+        TF_MUST_USE_RESULT;
+
+// Message-text conversion for tensorflow.GPUOptions.Experimental
+string ProtoDebugString(
+    const ::tensorflow::GPUOptions_Experimental& msg);
+string ProtoShortDebugString(
+    const ::tensorflow::GPUOptions_Experimental& msg);
+bool ProtoParseFromString(
+    const string& s,
+    ::tensorflow::GPUOptions_Experimental* msg)
+        TF_MUST_USE_RESULT;
+
 // Message-text conversion for tensorflow.GPUOptions
 string ProtoDebugString(
     const ::tensorflow::GPUOptions& msg);
@@ -67,6 +87,16 @@ bool ProtoParseFromString(
     ::tensorflow::RPCOptions* msg)
         TF_MUST_USE_RESULT;
 
+// Message-text conversion for tensorflow.ConfigProto.Experimental
+string ProtoDebugString(
+    const ::tensorflow::ConfigProto_Experimental& msg);
+string ProtoShortDebugString(
+    const ::tensorflow::ConfigProto_Experimental& msg);
+bool ProtoParseFromString(
+    const string& s,
+    ::tensorflow::ConfigProto_Experimental* msg)
+        TF_MUST_USE_RESULT;
+
 // Message-text conversion for tensorflow.ConfigProto
 string ProtoDebugString(
     const ::tensorflow::ConfigProto& msg);
@@ -80,6 +110,16 @@ bool ProtoParseFromString(
 // Enum text output for tensorflow.RunOptions.TraceLevel
 const char* EnumName_RunOptions_TraceLevel(
     ::tensorflow::RunOptions_TraceLevel value);
+
+// Message-text conversion for tensorflow.RunOptions.Experimental
+string ProtoDebugString(
+    const ::tensorflow::RunOptions_Experimental& msg);
+string ProtoShortDebugString(
+    const ::tensorflow::RunOptions_Experimental& msg);
+bool ProtoParseFromString(
+    const string& s,
+    ::tensorflow::RunOptions_Experimental* msg)
+        TF_MUST_USE_RESULT;
 
 // Message-text conversion for tensorflow.RunOptions
 string ProtoDebugString(
@@ -99,6 +139,26 @@ string ProtoShortDebugString(
 bool ProtoParseFromString(
     const string& s,
     ::tensorflow::RunMetadata* msg)
+        TF_MUST_USE_RESULT;
+
+// Message-text conversion for tensorflow.TensorConnection
+string ProtoDebugString(
+    const ::tensorflow::TensorConnection& msg);
+string ProtoShortDebugString(
+    const ::tensorflow::TensorConnection& msg);
+bool ProtoParseFromString(
+    const string& s,
+    ::tensorflow::TensorConnection* msg)
+        TF_MUST_USE_RESULT;
+
+// Message-text conversion for tensorflow.CallableOptions
+string ProtoDebugString(
+    const ::tensorflow::CallableOptions& msg);
+string ProtoShortDebugString(
+    const ::tensorflow::CallableOptions& msg);
+bool ProtoParseFromString(
+    const string& s,
+    ::tensorflow::CallableOptions* msg)
         TF_MUST_USE_RESULT;
 
 }  // namespace tensorflow

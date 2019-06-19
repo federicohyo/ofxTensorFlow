@@ -11,7 +11,7 @@
 #ifndef EIGEN_META_H
 #define EIGEN_META_H
 
-#if defined(__CUDA_ARCH__)
+#if defined(EIGEN_CUDA_ARCH)
 #include <cfloat>
 #include <math_constants.h>
 #endif
@@ -98,6 +98,8 @@ template<> struct is_arithmetic<signed long>   { enum { value = true }; };
 template<> struct is_arithmetic<unsigned long> { enum { value = true }; };
 
 #if EIGEN_HAS_CXX11
+template<> struct is_arithmetic<signed long long>   { enum { value = true }; };
+template<> struct is_arithmetic<unsigned long long> { enum { value = true }; };
 using std::is_integral;
 #else
 template<typename T> struct is_integral               { enum { value = false }; };
@@ -111,6 +113,10 @@ template<> struct is_integral<signed int>             { enum { value = true }; }
 template<> struct is_integral<unsigned int>           { enum { value = true }; };
 template<> struct is_integral<signed long>            { enum { value = true }; };
 template<> struct is_integral<unsigned long>          { enum { value = true }; };
+#if EIGEN_COMP_MSVC
+template<> struct is_integral<signed __int64>         { enum { value = true }; };
+template<> struct is_integral<unsigned __int64>       { enum { value = true }; };
+#endif
 #endif
 
 
@@ -169,7 +175,7 @@ template<bool Condition, typename T=void> struct enable_if;
 template<typename T> struct enable_if<true,T>
 { typedef T type; };
 
-#if defined(__CUDA_ARCH__)
+#if defined(EIGEN_CUDA_ARCH)
 #if !defined(__FLT_EPSILON__)
 #define __FLT_EPSILON__ FLT_EPSILON
 #define __DBL_EPSILON__ DBL_EPSILON
@@ -272,7 +278,7 @@ template<> struct numeric_limits<unsigned long long>
 #endif
 
 /** \internal
-  * A base class do disable default copy ctor and copy assignement operator.
+  * A base class do disable default copy ctor and copy assignment operator.
   */
 class noncopyable
 {
@@ -523,13 +529,13 @@ template<typename T, typename U> struct scalar_product_traits
 
 namespace numext {
   
-#if defined(__CUDA_ARCH__)
+#if defined(EIGEN_CUDA_ARCH)
 template<typename T> EIGEN_DEVICE_FUNC   void swap(T &a, T &b) { T tmp = b; b = a; a = tmp; }
 #else
 template<typename T> EIGEN_STRONG_INLINE void swap(T &a, T &b) { std::swap(a,b); }
 #endif
 
-#if defined(__CUDA_ARCH__)
+#if defined(EIGEN_CUDA_ARCH)
 using internal::device::numeric_limits;
 #else
 using std::numeric_limits;
@@ -542,6 +548,30 @@ T div_ceil(const T &a, const T &b)
 {
   return (a+b-1) / b;
 }
+
+// The aim of the following functions is to bypass -Wfloat-equal warnings
+// when we really want a strict equality comparison on floating points.
+template<typename X, typename Y> EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC
+bool equal_strict(const X& x,const Y& y) { return x == y; }
+
+#if !defined(EIGEN_CUDA_ARCH)
+template<> EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC
+bool equal_strict(const float& x,const float& y) { return std::equal_to<float>()(x,y); }
+
+template<> EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC
+bool equal_strict(const double& x,const double& y) { return std::equal_to<double>()(x,y); }
+#endif
+
+template<typename X, typename Y> EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC
+bool not_equal_strict(const X& x,const Y& y) { return x != y; }
+
+#if !defined(EIGEN_CUDA_ARCH)
+template<> EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC
+bool not_equal_strict(const float& x,const float& y) { return std::not_equal_to<float>()(x,y); }
+
+template<> EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC
+bool not_equal_strict(const double& x,const double& y) { return std::not_equal_to<double>()(x,y); }
+#endif
 
 } // end namespace numext
 

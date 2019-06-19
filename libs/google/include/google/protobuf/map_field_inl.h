@@ -32,10 +32,8 @@
 #define GOOGLE_PROTOBUF_MAP_FIELD_INL_H__
 
 #include <memory>
-#ifndef _SHARED_PTR_H
-#include <google/protobuf/stubs/shared_ptr.h>
-#endif
 
+#include <google/protobuf/stubs/casts.h>
 #include <google/protobuf/map.h>
 #include <google/protobuf/map_field.h>
 #include <google/protobuf/map_type_handler.h>
@@ -168,7 +166,7 @@ template <typename Derived, typename Key, typename T,
 int MapField<Derived, Key, T, kKeyFieldType, kValueFieldType,
              default_enum_value>::size() const {
   MapFieldBase::SyncMapWithRepeatedField();
-  return impl_.GetMap().size();
+  return static_cast<int>(impl_.GetMap().size());
 }
 
 template <typename Derived, typename Key, typename T,
@@ -252,9 +250,13 @@ template <typename Derived, typename Key, typename T,
           WireFormatLite::FieldType kValueFieldType, int default_enum_value>
 void MapField<Derived, Key, T, kKeyFieldType, kValueFieldType,
               default_enum_value>::Swap(MapField* other) {
-  std::swap(MapFieldBase::repeated_field_, other->repeated_field_);
+  std::swap(this->MapFieldBase::repeated_field_, other->repeated_field_);
   impl_.Swap(&other->impl_);
-  std::swap(MapFieldBase::state_, other->state_);
+  // a relaxed swap of the atomic
+  auto other_state = other->state_.load(std::memory_order_relaxed);
+  auto this_state = this->MapFieldBase::state_.load(std::memory_order_relaxed);
+  other->state_.store(this_state, std::memory_order_relaxed);
+  this->MapFieldBase::state_.store(other_state, std::memory_order_relaxed);
 }
 
 template <typename Derived, typename Key, typename T,

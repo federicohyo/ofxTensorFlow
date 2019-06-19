@@ -40,9 +40,6 @@
 
 #include <algorithm>
 #include <memory>
-#ifndef _SHARED_PTR_H
-#include <google/protobuf/stubs/shared_ptr.h>
-#endif
 #include <vector>
 
 #include <google/protobuf/message.h>
@@ -130,7 +127,7 @@ class LIBPROTOBUF_EXPORT DynamicMessageFactory : public MessageFactory {
   // public header (for good reason), but dynamic_message.h is, and public
   // headers may only #include other public headers.
   struct PrototypeMap;
-  google::protobuf::scoped_ptr<PrototypeMap> prototypes_;
+  std::unique_ptr<PrototypeMap> prototypes_;
   mutable Mutex prototypes_mutex_;
 
   friend class DynamicMessage;
@@ -156,24 +153,24 @@ class LIBPROTOBUF_EXPORT DynamicMapSorter {
                                           int map_size,
                                           const Reflection* reflection,
                                           const FieldDescriptor* field) {
-    std::vector<const Message*> result(map_size);
+    std::vector<const Message*> result(static_cast<size_t>(map_size));
     const RepeatedPtrField<Message>& map_field =
         reflection->GetRepeatedPtrField<Message>(message, field);
-    int i = 0;
+    size_t i = 0;
     for (RepeatedPtrField<Message>::const_pointer_iterator it =
              map_field.pointer_begin(); it != map_field.pointer_end(); ) {
       result[i++] = *it++;
     }
-    GOOGLE_DCHECK_EQ(result.size(), static_cast<size_t>(i));
+    GOOGLE_DCHECK_EQ(result.size(), i);
     MapEntryMessageComparator comparator(field->message_type());
-    std::sort(result.begin(), result.end(), comparator);
+    std::stable_sort(result.begin(), result.end(), comparator);
     // Complain if the keys aren't in ascending order.
 #ifndef NDEBUG
-    for (int j = 1; j < map_size; j++) {
+    for (size_t j = 1; j < static_cast<size_t>(map_size); j++) {
       if (!comparator(result[j - 1], result[j])) {
         GOOGLE_LOG(ERROR) << (comparator(result[j], result[j - 1]) ?
-                       "internal error in map key sorting" :
-                       "map keys are not unique");
+                      "internal error in map key sorting" :
+                      "map keys are not unique");
       }
     }
 #endif

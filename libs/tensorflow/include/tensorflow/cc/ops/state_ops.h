@@ -47,7 +47,7 @@ class Assign {
     /// 'ref' will take on the shape of 'value'.
     ///
     /// Defaults to true
-    Attrs ValidateShape(bool x) {
+    TF_MUST_USE_RESULT Attrs ValidateShape(bool x) {
       Attrs ret = *this;
       ret.validate_shape_ = x;
       return ret;
@@ -57,7 +57,7 @@ class Assign {
     /// otherwise the behavior is undefined, but may exhibit less contention.
     ///
     /// Defaults to true
-    Attrs UseLocking(bool x) {
+    TF_MUST_USE_RESULT Attrs UseLocking(bool x) {
       Attrs ret = *this;
       ret.use_locking_ = x;
       return ret;
@@ -81,6 +81,7 @@ class Assign {
     return Attrs().UseLocking(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output_ref;
 };
 
@@ -109,7 +110,7 @@ class AssignAdd {
     /// otherwise the behavior is undefined, but may exhibit less contention.
     ///
     /// Defaults to false
-    Attrs UseLocking(bool x) {
+    TF_MUST_USE_RESULT Attrs UseLocking(bool x) {
       Attrs ret = *this;
       ret.use_locking_ = x;
       return ret;
@@ -129,6 +130,7 @@ class AssignAdd {
     return Attrs().UseLocking(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output_ref;
 };
 
@@ -157,7 +159,7 @@ class AssignSub {
     /// otherwise the behavior is undefined, but may exhibit less contention.
     ///
     /// Defaults to false
-    Attrs UseLocking(bool x) {
+    TF_MUST_USE_RESULT Attrs UseLocking(bool x) {
       Attrs ret = *this;
       ret.use_locking_ = x;
       return ret;
@@ -177,6 +179,7 @@ class AssignSub {
     return Attrs().UseLocking(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output_ref;
 };
 
@@ -199,6 +202,7 @@ class CountUpTo {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -228,6 +232,7 @@ class DestroyTemporaryVariable {
   operator ::tensorflow::Input() const { return value; }
   ::tensorflow::Node* node() const { return value.node(); }
 
+  Operation operation;
   ::tensorflow::Output value;
 };
 
@@ -249,218 +254,36 @@ class IsVariableInitialized {
   operator ::tensorflow::Input() const { return is_initialized; }
   ::tensorflow::Node* node() const { return is_initialized.node(); }
 
+  Operation operation;
   ::tensorflow::Output is_initialized;
 };
 
-/// Adds sparse updates to a variable reference.
-///
-/// This operation computes
-///
-///     # Scalar indices
-///     ref[indices, ...] += updates[...]
-///
-///     # Vector indices (for each i)
-///     ref[indices[i], ...] += updates[i, ...]
-///
-///     # High rank indices (for each i, ..., j)
-///     ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]
-///
-/// This operation outputs `ref` after the update is done.
-/// This makes it easier to chain operations that need to use the reset value.
-///
-/// Duplicate entries are handled correctly: if multiple `indices` reference
-/// the same location, their contributions add.
-///
-/// Requires `updates.shape = indices.shape + ref.shape[1:]`.
-///
-/// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-/// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterAdd.png" alt>
-/// </div>
+/// Increments variable pointed to by 'resource' until it reaches 'limit'.
 ///
 /// Arguments:
 /// * scope: A Scope object
-/// * ref: Should be from a `Variable` node.
-/// * indices: A tensor of indices into the first dimension of `ref`.
-/// * updates: A tensor of updated values to add to `ref`.
-///
-/// Optional attributes (see `Attrs`):
-/// * use_locking: If True, the addition will be protected by a lock;
-/// otherwise the behavior is undefined, but may exhibit less contention.
+/// * resource: Should be from a scalar `Variable` node.
+/// * limit: If incrementing ref would bring it above limit, instead generates an
+/// 'OutOfRange' error.
 ///
 /// Returns:
-/// * `Output`: = Same as `ref`.  Returned as a convenience for operations that want
-/// to use the updated values after the update is done.
-class ScatterAdd {
+/// * `Output`: A copy of the input before increment. If nothing else modifies the
+/// input, the values produced will all be distinct.
+class ResourceCountUpTo {
  public:
-  /// Optional attribute setters for ScatterAdd
-  struct Attrs {
-    /// If True, the addition will be protected by a lock;
-    /// otherwise the behavior is undefined, but may exhibit less contention.
-    ///
-    /// Defaults to false
-    Attrs UseLocking(bool x) {
-      Attrs ret = *this;
-      ret.use_locking_ = x;
-      return ret;
-    }
+  ResourceCountUpTo(const ::tensorflow::Scope& scope, ::tensorflow::Input
+                  resource, int64 limit, DataType T);
+  operator ::tensorflow::Output() const { return output; }
+  operator ::tensorflow::Input() const { return output; }
+  ::tensorflow::Node* node() const { return output.node(); }
 
-    bool use_locking_ = false;
-  };
-  ScatterAdd(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
-           ::tensorflow::Input indices, ::tensorflow::Input updates);
-  ScatterAdd(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
-           ::tensorflow::Input indices, ::tensorflow::Input updates, const
-           ScatterAdd::Attrs& attrs);
-  operator ::tensorflow::Output() const { return output_ref; }
-  operator ::tensorflow::Input() const { return output_ref; }
-  ::tensorflow::Node* node() const { return output_ref.node(); }
-
-  static Attrs UseLocking(bool x) {
-    return Attrs().UseLocking(x);
-  }
-
-  ::tensorflow::Output output_ref;
+  Operation operation;
+  ::tensorflow::Output output;
 };
 
-/// Divides a variable reference by sparse updates.
+/// Adds sparse `updates` to individual values or slices within a given
 ///
-/// This operation computes
-///
-/// ```python
-///     # Scalar indices
-///     ref[indices, ...] /= updates[...]
-///
-///     # Vector indices (for each i)
-///     ref[indices[i], ...] /= updates[i, ...]
-///
-///     # High rank indices (for each i, ..., j)
-///     ref[indices[i, ..., j], ...] /= updates[i, ..., j, ...]
-/// ```
-///
-/// This operation outputs `ref` after the update is done.
-/// This makes it easier to chain operations that need to use the reset value.
-///
-/// Duplicate entries are handled correctly: if multiple `indices` reference
-/// the same location, their contributions divide.
-///
-/// Requires `updates.shape = indices.shape + ref.shape[1:]`.
-///
-/// Arguments:
-/// * scope: A Scope object
-/// * ref: Should be from a `Variable` node.
-/// * indices: A tensor of indices into the first dimension of `ref`.
-/// * updates: A tensor of values that `ref` is divided by.
-///
-/// Optional attributes (see `Attrs`):
-/// * use_locking: If True, the operation will be protected by a lock;
-/// otherwise the behavior is undefined, but may exhibit less contention.
-///
-/// Returns:
-/// * `Output`: = Same as `ref`.  Returned as a convenience for operations that want
-/// to use the updated values after the update is done.
-class ScatterDiv {
- public:
-  /// Optional attribute setters for ScatterDiv
-  struct Attrs {
-    /// If True, the operation will be protected by a lock;
-    /// otherwise the behavior is undefined, but may exhibit less contention.
-    ///
-    /// Defaults to false
-    Attrs UseLocking(bool x) {
-      Attrs ret = *this;
-      ret.use_locking_ = x;
-      return ret;
-    }
-
-    bool use_locking_ = false;
-  };
-  ScatterDiv(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
-           ::tensorflow::Input indices, ::tensorflow::Input updates);
-  ScatterDiv(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
-           ::tensorflow::Input indices, ::tensorflow::Input updates, const
-           ScatterDiv::Attrs& attrs);
-  operator ::tensorflow::Output() const { return output_ref; }
-  operator ::tensorflow::Input() const { return output_ref; }
-  ::tensorflow::Node* node() const { return output_ref.node(); }
-
-  static Attrs UseLocking(bool x) {
-    return Attrs().UseLocking(x);
-  }
-
-  ::tensorflow::Output output_ref;
-};
-
-/// Multiplies sparse updates into a variable reference.
-///
-/// This operation computes
-///
-/// ```python
-///     # Scalar indices
-///     ref[indices, ...] *= updates[...]
-///
-///     # Vector indices (for each i)
-///     ref[indices[i], ...] *= updates[i, ...]
-///
-///     # High rank indices (for each i, ..., j)
-///     ref[indices[i, ..., j], ...] *= updates[i, ..., j, ...]
-/// ```
-///
-/// This operation outputs `ref` after the update is done.
-/// This makes it easier to chain operations that need to use the reset value.
-///
-/// Duplicate entries are handled correctly: if multiple `indices` reference
-/// the same location, their contributions multiply.
-///
-/// Requires `updates.shape = indices.shape + ref.shape[1:]`.
-///
-/// Arguments:
-/// * scope: A Scope object
-/// * ref: Should be from a `Variable` node.
-/// * indices: A tensor of indices into the first dimension of `ref`.
-/// * updates: A tensor of updated values to multiply to `ref`.
-///
-/// Optional attributes (see `Attrs`):
-/// * use_locking: If True, the operation will be protected by a lock;
-/// otherwise the behavior is undefined, but may exhibit less contention.
-///
-/// Returns:
-/// * `Output`: = Same as `ref`.  Returned as a convenience for operations that want
-/// to use the updated values after the update is done.
-class ScatterMul {
- public:
-  /// Optional attribute setters for ScatterMul
-  struct Attrs {
-    /// If True, the operation will be protected by a lock;
-    /// otherwise the behavior is undefined, but may exhibit less contention.
-    ///
-    /// Defaults to false
-    Attrs UseLocking(bool x) {
-      Attrs ret = *this;
-      ret.use_locking_ = x;
-      return ret;
-    }
-
-    bool use_locking_ = false;
-  };
-  ScatterMul(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
-           ::tensorflow::Input indices, ::tensorflow::Input updates);
-  ScatterMul(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
-           ::tensorflow::Input indices, ::tensorflow::Input updates, const
-           ScatterMul::Attrs& attrs);
-  operator ::tensorflow::Output() const { return output_ref; }
-  operator ::tensorflow::Input() const { return output_ref; }
-  ::tensorflow::Node* node() const { return output_ref.node(); }
-
-  static Attrs UseLocking(bool x) {
-    return Attrs().UseLocking(x);
-  }
-
-  ::tensorflow::Output output_ref;
-};
-
-/// Applies sparse addition between `updates` and individual values or slices
-///
-/// within a given variable according to `indices`.
+/// variable according to `indices`.
 ///
 /// `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
 ///
@@ -477,30 +300,32 @@ class ScatterMul {
 /// [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
 /// ```
 ///
-/// For example, say we want to add 4 scattered elements to a rank-1 tensor to 8
-/// elements. In Python, that addition would look like this:
+/// For example, say we want to update 4 scattered elements to a rank-1 tensor to
+/// 8 elements. In Python, that update would look like this:
 ///
-///     ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
-///     indices = tf.constant([[4], [3], [1], [7]])
+/// ```python
+///     ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8], use_resource=True)
+///     indices = tf.constant([[4], [3], [1] ,[7]])
 ///     updates = tf.constant([9, 10, 11, 12])
-///     add = tf.scatter_nd_add(ref, indices, updates)
+///     update = tf.scatter_nd_add(ref, indices, updates)
 ///     with tf.Session() as sess:
-///       print sess.run(add)
+///       print sess.run(update)
+/// ```
 ///
 /// The resulting update to ref would look like this:
 ///
-///     [1, 13, 3, 14, 14, 6, 7, 20]
+///     [1, 12, 3, 14, 14, 6, 7, 20]
 ///
-/// See @{tf.scatter_nd} for more details about how to make updates to
+/// See `tf.scatter_nd` for more details about how to make updates to
 /// slices.
 ///
 /// Arguments:
 /// * scope: A Scope object
-/// * ref: A mutable Tensor. Should be from a Variable node.
+/// * ref: A resource handle. Must be from a VarHandleOp.
 /// * indices: A Tensor. Must be one of the following types: int32, int64.
 /// A tensor of indices into ref.
-/// * updates: A Tensor. Must have the same type as ref. A tensor of updated values
-/// to add to ref.
+/// * updates: A Tensor. Must have the same type as ref. A tensor of
+/// values to add to ref.
 ///
 /// Optional attributes (see `Attrs`):
 /// * use_locking: An optional bool. Defaults to True. If True, the assignment will
@@ -508,124 +333,36 @@ class ScatterMul {
 /// but may exhibit less contention.
 ///
 /// Returns:
-/// * `Output`: Same as ref. Returned as a convenience for operations that want
-/// to use the updated values after the update is done.
-class ScatterNdAdd {
+/// * the created `Operation`
+class ResourceScatterNdAdd {
  public:
-  /// Optional attribute setters for ScatterNdAdd
+  /// Optional attribute setters for ResourceScatterNdAdd
   struct Attrs {
     /// An optional bool. Defaults to True. If True, the assignment will
     /// be protected by a lock; otherwise the behavior is undefined,
     /// but may exhibit less contention.
     ///
-    /// Defaults to false
-    Attrs UseLocking(bool x) {
+    /// Defaults to true
+    TF_MUST_USE_RESULT Attrs UseLocking(bool x) {
       Attrs ret = *this;
       ret.use_locking_ = x;
       return ret;
     }
 
-    bool use_locking_ = false;
+    bool use_locking_ = true;
   };
-  ScatterNdAdd(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
-             ::tensorflow::Input indices, ::tensorflow::Input updates);
-  ScatterNdAdd(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
-             ::tensorflow::Input indices, ::tensorflow::Input updates, const
-             ScatterNdAdd::Attrs& attrs);
-  operator ::tensorflow::Output() const { return output_ref; }
-  operator ::tensorflow::Input() const { return output_ref; }
-  ::tensorflow::Node* node() const { return output_ref.node(); }
+  ResourceScatterNdAdd(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
+                     ::tensorflow::Input indices, ::tensorflow::Input updates);
+  ResourceScatterNdAdd(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
+                     ::tensorflow::Input indices, ::tensorflow::Input updates,
+                     const ResourceScatterNdAdd::Attrs& attrs);
+  operator ::tensorflow::Operation() const { return operation; }
 
   static Attrs UseLocking(bool x) {
     return Attrs().UseLocking(x);
   }
 
-  ::tensorflow::Output output_ref;
-};
-
-/// Applies sparse subtraction between `updates` and individual values or slices
-///
-/// within a given variable according to `indices`.
-///
-/// `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
-///
-/// `indices` must be integer tensor, containing indices into `ref`.
-/// It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
-///
-/// The innermost dimension of `indices` (with length `K`) corresponds to
-/// indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-/// dimension of `ref`.
-///
-/// `updates` is `Tensor` of rank `Q-1+P-K` with shape:
-///
-/// ```
-/// [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
-/// ```
-///
-/// For example, say we want to subtract 4 scattered elements from a rank-1 tensor
-/// with 8 elements. In Python, that subtraction would look like this:
-///
-///     ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
-///     indices = tf.constant([[4], [3], [1], [7]])
-///     updates = tf.constant([9, 10, 11, 12])
-///     sub = tf.scatter_nd_sub(ref, indices, updates)
-///     with tf.Session() as sess:
-///       print sess.run(sub)
-///
-/// The resulting update to ref would look like this:
-///
-///     [1, -9, 3, -6, -4, 6, 7, -4]
-///
-/// See @{tf.scatter_nd} for more details about how to make updates to
-/// slices.
-///
-/// Arguments:
-/// * scope: A Scope object
-/// * ref: A mutable Tensor. Should be from a Variable node.
-/// * indices: A Tensor. Must be one of the following types: int32, int64.
-/// A tensor of indices into ref.
-/// * updates: A Tensor. Must have the same type as ref. A tensor of updated values
-/// to subtract from ref.
-///
-/// Optional attributes (see `Attrs`):
-/// * use_locking: An optional bool. Defaults to True. If True, the assignment will
-/// be protected by a lock; otherwise the behavior is undefined,
-/// but may exhibit less contention.
-///
-/// Returns:
-/// * `Output`: Same as ref. Returned as a convenience for operations that want
-/// to use the updated values after the update is done.
-class ScatterNdSub {
- public:
-  /// Optional attribute setters for ScatterNdSub
-  struct Attrs {
-    /// An optional bool. Defaults to True. If True, the assignment will
-    /// be protected by a lock; otherwise the behavior is undefined,
-    /// but may exhibit less contention.
-    ///
-    /// Defaults to false
-    Attrs UseLocking(bool x) {
-      Attrs ret = *this;
-      ret.use_locking_ = x;
-      return ret;
-    }
-
-    bool use_locking_ = false;
-  };
-  ScatterNdSub(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
-             ::tensorflow::Input indices, ::tensorflow::Input updates);
-  ScatterNdSub(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
-             ::tensorflow::Input indices, ::tensorflow::Input updates, const
-             ScatterNdSub::Attrs& attrs);
-  operator ::tensorflow::Output() const { return output_ref; }
-  operator ::tensorflow::Input() const { return output_ref; }
-  ::tensorflow::Node* node() const { return output_ref.node(); }
-
-  static Attrs UseLocking(bool x) {
-    return Attrs().UseLocking(x);
-  }
-
-  ::tensorflow::Output output_ref;
+  Operation operation;
 };
 
 /// Applies sparse `updates` to individual values or slices within a given
@@ -663,8 +400,612 @@ class ScatterNdSub {
 ///
 ///     [1, 11, 3, 10, 9, 6, 7, 12]
 ///
-/// See @{tf.scatter_nd} for more details about how to make updates to
+/// See `tf.scatter_nd` for more details about how to make updates to
 /// slices.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * ref: A resource handle. Must be from a VarHandleOp.
+/// * indices: A Tensor. Must be one of the following types: int32, int64.
+/// A tensor of indices into ref.
+/// * updates: A Tensor. Must have the same type as ref. A tensor of updated
+/// values to add to ref.
+///
+/// Optional attributes (see `Attrs`):
+/// * use_locking: An optional bool. Defaults to True. If True, the assignment will
+/// be protected by a lock; otherwise the behavior is undefined,
+/// but may exhibit less contention.
+///
+/// Returns:
+/// * the created `Operation`
+class ResourceScatterNdUpdate {
+ public:
+  /// Optional attribute setters for ResourceScatterNdUpdate
+  struct Attrs {
+    /// An optional bool. Defaults to True. If True, the assignment will
+    /// be protected by a lock; otherwise the behavior is undefined,
+    /// but may exhibit less contention.
+    ///
+    /// Defaults to true
+    TF_MUST_USE_RESULT Attrs UseLocking(bool x) {
+      Attrs ret = *this;
+      ret.use_locking_ = x;
+      return ret;
+    }
+
+    bool use_locking_ = true;
+  };
+  ResourceScatterNdUpdate(const ::tensorflow::Scope& scope, ::tensorflow::Input
+                        ref, ::tensorflow::Input indices, ::tensorflow::Input
+                        updates);
+  ResourceScatterNdUpdate(const ::tensorflow::Scope& scope, ::tensorflow::Input
+                        ref, ::tensorflow::Input indices, ::tensorflow::Input
+                        updates, const ResourceScatterNdUpdate::Attrs& attrs);
+  operator ::tensorflow::Operation() const { return operation; }
+
+  static Attrs UseLocking(bool x) {
+    return Attrs().UseLocking(x);
+  }
+
+  Operation operation;
+};
+
+/// Adds sparse updates to a variable reference.
+///
+/// This operation computes
+///
+///     # Scalar indices
+///     ref[indices, ...] += updates[...]
+///
+///     # Vector indices (for each i)
+///     ref[indices[i], ...] += updates[i, ...]
+///
+///     # High rank indices (for each i, ..., j)
+///     ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]
+///
+/// This operation outputs `ref` after the update is done.
+/// This makes it easier to chain operations that need to use the reset value.
+///
+/// Duplicate entries are handled correctly: if multiple `indices` reference
+/// the same location, their contributions add.
+///
+/// Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`.
+///
+/// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+/// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterAdd.png" alt>
+/// </div>
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * ref: Should be from a `Variable` node.
+/// * indices: A tensor of indices into the first dimension of `ref`.
+/// * updates: A tensor of updated values to add to `ref`.
+///
+/// Optional attributes (see `Attrs`):
+/// * use_locking: If True, the addition will be protected by a lock;
+/// otherwise the behavior is undefined, but may exhibit less contention.
+///
+/// Returns:
+/// * `Output`: = Same as `ref`.  Returned as a convenience for operations that want
+/// to use the updated values after the update is done.
+class ScatterAdd {
+ public:
+  /// Optional attribute setters for ScatterAdd
+  struct Attrs {
+    /// If True, the addition will be protected by a lock;
+    /// otherwise the behavior is undefined, but may exhibit less contention.
+    ///
+    /// Defaults to false
+    TF_MUST_USE_RESULT Attrs UseLocking(bool x) {
+      Attrs ret = *this;
+      ret.use_locking_ = x;
+      return ret;
+    }
+
+    bool use_locking_ = false;
+  };
+  ScatterAdd(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
+           ::tensorflow::Input indices, ::tensorflow::Input updates);
+  ScatterAdd(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
+           ::tensorflow::Input indices, ::tensorflow::Input updates, const
+           ScatterAdd::Attrs& attrs);
+  operator ::tensorflow::Output() const { return output_ref; }
+  operator ::tensorflow::Input() const { return output_ref; }
+  ::tensorflow::Node* node() const { return output_ref.node(); }
+
+  static Attrs UseLocking(bool x) {
+    return Attrs().UseLocking(x);
+  }
+
+  Operation operation;
+  ::tensorflow::Output output_ref;
+};
+
+/// Divides a variable reference by sparse updates.
+///
+/// This operation computes
+///
+/// ```python
+///     # Scalar indices
+///     ref[indices, ...] /= updates[...]
+///
+///     # Vector indices (for each i)
+///     ref[indices[i], ...] /= updates[i, ...]
+///
+///     # High rank indices (for each i, ..., j)
+///     ref[indices[i, ..., j], ...] /= updates[i, ..., j, ...]
+/// ```
+///
+/// This operation outputs `ref` after the update is done.
+/// This makes it easier to chain operations that need to use the reset value.
+///
+/// Duplicate entries are handled correctly: if multiple `indices` reference
+/// the same location, their contributions divide.
+///
+/// Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * ref: Should be from a `Variable` node.
+/// * indices: A tensor of indices into the first dimension of `ref`.
+/// * updates: A tensor of values that `ref` is divided by.
+///
+/// Optional attributes (see `Attrs`):
+/// * use_locking: If True, the operation will be protected by a lock;
+/// otherwise the behavior is undefined, but may exhibit less contention.
+///
+/// Returns:
+/// * `Output`: = Same as `ref`.  Returned as a convenience for operations that want
+/// to use the updated values after the update is done.
+class ScatterDiv {
+ public:
+  /// Optional attribute setters for ScatterDiv
+  struct Attrs {
+    /// If True, the operation will be protected by a lock;
+    /// otherwise the behavior is undefined, but may exhibit less contention.
+    ///
+    /// Defaults to false
+    TF_MUST_USE_RESULT Attrs UseLocking(bool x) {
+      Attrs ret = *this;
+      ret.use_locking_ = x;
+      return ret;
+    }
+
+    bool use_locking_ = false;
+  };
+  ScatterDiv(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
+           ::tensorflow::Input indices, ::tensorflow::Input updates);
+  ScatterDiv(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
+           ::tensorflow::Input indices, ::tensorflow::Input updates, const
+           ScatterDiv::Attrs& attrs);
+  operator ::tensorflow::Output() const { return output_ref; }
+  operator ::tensorflow::Input() const { return output_ref; }
+  ::tensorflow::Node* node() const { return output_ref.node(); }
+
+  static Attrs UseLocking(bool x) {
+    return Attrs().UseLocking(x);
+  }
+
+  Operation operation;
+  ::tensorflow::Output output_ref;
+};
+
+/// Reduces sparse updates into a variable reference using the `max` operation.
+///
+/// This operation computes
+///
+///     # Scalar indices
+///     ref[indices, ...] = max(ref[indices, ...], updates[...])
+///
+///     # Vector indices (for each i)
+///     ref[indices[i], ...] = max(ref[indices[i], ...], updates[i, ...])
+///
+///     # High rank indices (for each i, ..., j)
+///     ref[indices[i, ..., j], ...] = max(ref[indices[i, ..., j], ...], updates[i, ..., j, ...])
+///
+/// This operation outputs `ref` after the update is done.
+/// This makes it easier to chain operations that need to use the reset value.
+///
+/// Duplicate entries are handled correctly: if multiple `indices` reference
+/// the same location, their contributions combine.
+///
+/// Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`.
+///
+/// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+/// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterAdd.png" alt>
+/// </div>
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * ref: Should be from a `Variable` node.
+/// * indices: A tensor of indices into the first dimension of `ref`.
+/// * updates: A tensor of updated values to reduce into `ref`.
+///
+/// Optional attributes (see `Attrs`):
+/// * use_locking: If True, the update will be protected by a lock;
+/// otherwise the behavior is undefined, but may exhibit less contention.
+///
+/// Returns:
+/// * `Output`: = Same as `ref`.  Returned as a convenience for operations that want
+/// to use the updated values after the update is done.
+class ScatterMax {
+ public:
+  /// Optional attribute setters for ScatterMax
+  struct Attrs {
+    /// If True, the update will be protected by a lock;
+    /// otherwise the behavior is undefined, but may exhibit less contention.
+    ///
+    /// Defaults to false
+    TF_MUST_USE_RESULT Attrs UseLocking(bool x) {
+      Attrs ret = *this;
+      ret.use_locking_ = x;
+      return ret;
+    }
+
+    bool use_locking_ = false;
+  };
+  ScatterMax(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
+           ::tensorflow::Input indices, ::tensorflow::Input updates);
+  ScatterMax(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
+           ::tensorflow::Input indices, ::tensorflow::Input updates, const
+           ScatterMax::Attrs& attrs);
+  operator ::tensorflow::Output() const { return output_ref; }
+  operator ::tensorflow::Input() const { return output_ref; }
+  ::tensorflow::Node* node() const { return output_ref.node(); }
+
+  static Attrs UseLocking(bool x) {
+    return Attrs().UseLocking(x);
+  }
+
+  Operation operation;
+  ::tensorflow::Output output_ref;
+};
+
+/// Reduces sparse updates into a variable reference using the `min` operation.
+///
+/// This operation computes
+///
+///     # Scalar indices
+///     ref[indices, ...] = min(ref[indices, ...], updates[...])
+///
+///     # Vector indices (for each i)
+///     ref[indices[i], ...] = min(ref[indices[i], ...], updates[i, ...])
+///
+///     # High rank indices (for each i, ..., j)
+///     ref[indices[i, ..., j], ...] = min(ref[indices[i, ..., j], ...], updates[i, ..., j, ...])
+///
+/// This operation outputs `ref` after the update is done.
+/// This makes it easier to chain operations that need to use the reset value.
+///
+/// Duplicate entries are handled correctly: if multiple `indices` reference
+/// the same location, their contributions combine.
+///
+/// Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`.
+///
+/// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+/// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterAdd.png" alt>
+/// </div>
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * ref: Should be from a `Variable` node.
+/// * indices: A tensor of indices into the first dimension of `ref`.
+/// * updates: A tensor of updated values to reduce into `ref`.
+///
+/// Optional attributes (see `Attrs`):
+/// * use_locking: If True, the update will be protected by a lock;
+/// otherwise the behavior is undefined, but may exhibit less contention.
+///
+/// Returns:
+/// * `Output`: = Same as `ref`.  Returned as a convenience for operations that want
+/// to use the updated values after the update is done.
+class ScatterMin {
+ public:
+  /// Optional attribute setters for ScatterMin
+  struct Attrs {
+    /// If True, the update will be protected by a lock;
+    /// otherwise the behavior is undefined, but may exhibit less contention.
+    ///
+    /// Defaults to false
+    TF_MUST_USE_RESULT Attrs UseLocking(bool x) {
+      Attrs ret = *this;
+      ret.use_locking_ = x;
+      return ret;
+    }
+
+    bool use_locking_ = false;
+  };
+  ScatterMin(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
+           ::tensorflow::Input indices, ::tensorflow::Input updates);
+  ScatterMin(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
+           ::tensorflow::Input indices, ::tensorflow::Input updates, const
+           ScatterMin::Attrs& attrs);
+  operator ::tensorflow::Output() const { return output_ref; }
+  operator ::tensorflow::Input() const { return output_ref; }
+  ::tensorflow::Node* node() const { return output_ref.node(); }
+
+  static Attrs UseLocking(bool x) {
+    return Attrs().UseLocking(x);
+  }
+
+  Operation operation;
+  ::tensorflow::Output output_ref;
+};
+
+/// Multiplies sparse updates into a variable reference.
+///
+/// This operation computes
+///
+/// ```python
+///     # Scalar indices
+///     ref[indices, ...] *= updates[...]
+///
+///     # Vector indices (for each i)
+///     ref[indices[i], ...] *= updates[i, ...]
+///
+///     # High rank indices (for each i, ..., j)
+///     ref[indices[i, ..., j], ...] *= updates[i, ..., j, ...]
+/// ```
+///
+/// This operation outputs `ref` after the update is done.
+/// This makes it easier to chain operations that need to use the reset value.
+///
+/// Duplicate entries are handled correctly: if multiple `indices` reference
+/// the same location, their contributions multiply.
+///
+/// Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * ref: Should be from a `Variable` node.
+/// * indices: A tensor of indices into the first dimension of `ref`.
+/// * updates: A tensor of updated values to multiply to `ref`.
+///
+/// Optional attributes (see `Attrs`):
+/// * use_locking: If True, the operation will be protected by a lock;
+/// otherwise the behavior is undefined, but may exhibit less contention.
+///
+/// Returns:
+/// * `Output`: = Same as `ref`.  Returned as a convenience for operations that want
+/// to use the updated values after the update is done.
+class ScatterMul {
+ public:
+  /// Optional attribute setters for ScatterMul
+  struct Attrs {
+    /// If True, the operation will be protected by a lock;
+    /// otherwise the behavior is undefined, but may exhibit less contention.
+    ///
+    /// Defaults to false
+    TF_MUST_USE_RESULT Attrs UseLocking(bool x) {
+      Attrs ret = *this;
+      ret.use_locking_ = x;
+      return ret;
+    }
+
+    bool use_locking_ = false;
+  };
+  ScatterMul(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
+           ::tensorflow::Input indices, ::tensorflow::Input updates);
+  ScatterMul(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
+           ::tensorflow::Input indices, ::tensorflow::Input updates, const
+           ScatterMul::Attrs& attrs);
+  operator ::tensorflow::Output() const { return output_ref; }
+  operator ::tensorflow::Input() const { return output_ref; }
+  ::tensorflow::Node* node() const { return output_ref.node(); }
+
+  static Attrs UseLocking(bool x) {
+    return Attrs().UseLocking(x);
+  }
+
+  Operation operation;
+  ::tensorflow::Output output_ref;
+};
+
+/// Applies sparse addition between `updates` and individual values or slices
+///
+/// within a given variable according to `indices`.
+///
+/// `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+///
+/// `indices` must be integer tensor, containing indices into `ref`.
+/// It must be shape `\\([d_0, ..., d_{Q-2}, K]\\)` where `0 < K <= P`.
+///
+/// The innermost dimension of `indices` (with length `K`) corresponds to
+/// indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+/// dimension of `ref`.
+///
+/// `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+///
+/// $$[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].$$
+///
+/// For example, say we want to add 4 scattered elements to a rank-1 tensor to 8
+/// elements. In Python, that addition would look like this:
+///
+///     ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+///     indices = tf.constant([[4], [3], [1], [7]])
+///     updates = tf.constant([9, 10, 11, 12])
+///     add = tf.scatter_nd_add(ref, indices, updates)
+///     with tf.Session() as sess:
+///       print sess.run(add)
+///
+/// The resulting update to ref would look like this:
+///
+///     [1, 13, 3, 14, 14, 6, 7, 20]
+///
+/// See `tf.scatter_nd` for more details about how to make updates to
+/// slices.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * ref: A mutable Tensor. Should be from a Variable node.
+/// * indices: A Tensor. Must be one of the following types: int32, int64.
+/// A tensor of indices into ref.
+/// * updates: A Tensor. Must have the same type as ref. A tensor of updated values
+/// to add to ref.
+///
+/// Optional attributes (see `Attrs`):
+/// * use_locking: An optional bool. Defaults to True. If True, the assignment will
+/// be protected by a lock; otherwise the behavior is undefined,
+/// but may exhibit less contention.
+///
+/// Returns:
+/// * `Output`: Same as ref. Returned as a convenience for operations that want
+/// to use the updated values after the update is done.
+class ScatterNdAdd {
+ public:
+  /// Optional attribute setters for ScatterNdAdd
+  struct Attrs {
+    /// An optional bool. Defaults to True. If True, the assignment will
+    /// be protected by a lock; otherwise the behavior is undefined,
+    /// but may exhibit less contention.
+    ///
+    /// Defaults to false
+    TF_MUST_USE_RESULT Attrs UseLocking(bool x) {
+      Attrs ret = *this;
+      ret.use_locking_ = x;
+      return ret;
+    }
+
+    bool use_locking_ = false;
+  };
+  ScatterNdAdd(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
+             ::tensorflow::Input indices, ::tensorflow::Input updates);
+  ScatterNdAdd(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
+             ::tensorflow::Input indices, ::tensorflow::Input updates, const
+             ScatterNdAdd::Attrs& attrs);
+  operator ::tensorflow::Output() const { return output_ref; }
+  operator ::tensorflow::Input() const { return output_ref; }
+  ::tensorflow::Node* node() const { return output_ref.node(); }
+
+  static Attrs UseLocking(bool x) {
+    return Attrs().UseLocking(x);
+  }
+
+  Operation operation;
+  ::tensorflow::Output output_ref;
+};
+
+/// Applies sparse subtraction between `updates` and individual values or slices
+///
+/// within a given variable according to `indices`.
+///
+/// `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+///
+/// `indices` must be integer tensor, containing indices into `ref`.
+/// It must be shape \\([d_0, ..., d_{Q-2}, K]\\) where `0 < K <= P`.
+///
+/// The innermost dimension of `indices` (with length `K`) corresponds to
+/// indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+/// dimension of `ref`.
+///
+/// `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+///
+/// $$[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].$$
+///
+/// For example, say we want to subtract 4 scattered elements from a rank-1 tensor
+/// with 8 elements. In Python, that subtraction would look like this:
+///
+///     ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+///     indices = tf.constant([[4], [3], [1], [7]])
+///     updates = tf.constant([9, 10, 11, 12])
+///     sub = tf.scatter_nd_sub(ref, indices, updates)
+///     with tf.Session() as sess:
+///       print sess.run(sub)
+///
+/// The resulting update to ref would look like this:
+///
+///     [1, -9, 3, -6, -4, 6, 7, -4]
+///
+/// See `tf.scatter_nd` for more details about how to make updates to
+/// slices.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * ref: A mutable Tensor. Should be from a Variable node.
+/// * indices: A Tensor. Must be one of the following types: int32, int64.
+/// A tensor of indices into ref.
+/// * updates: A Tensor. Must have the same type as ref. A tensor of updated values
+/// to subtract from ref.
+///
+/// Optional attributes (see `Attrs`):
+/// * use_locking: An optional bool. Defaults to True. If True, the assignment will
+/// be protected by a lock; otherwise the behavior is undefined,
+/// but may exhibit less contention.
+///
+/// Returns:
+/// * `Output`: Same as ref. Returned as a convenience for operations that want
+/// to use the updated values after the update is done.
+class ScatterNdSub {
+ public:
+  /// Optional attribute setters for ScatterNdSub
+  struct Attrs {
+    /// An optional bool. Defaults to True. If True, the assignment will
+    /// be protected by a lock; otherwise the behavior is undefined,
+    /// but may exhibit less contention.
+    ///
+    /// Defaults to false
+    TF_MUST_USE_RESULT Attrs UseLocking(bool x) {
+      Attrs ret = *this;
+      ret.use_locking_ = x;
+      return ret;
+    }
+
+    bool use_locking_ = false;
+  };
+  ScatterNdSub(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
+             ::tensorflow::Input indices, ::tensorflow::Input updates);
+  ScatterNdSub(const ::tensorflow::Scope& scope, ::tensorflow::Input ref,
+             ::tensorflow::Input indices, ::tensorflow::Input updates, const
+             ScatterNdSub::Attrs& attrs);
+  operator ::tensorflow::Output() const { return output_ref; }
+  operator ::tensorflow::Input() const { return output_ref; }
+  ::tensorflow::Node* node() const { return output_ref.node(); }
+
+  static Attrs UseLocking(bool x) {
+    return Attrs().UseLocking(x);
+  }
+
+  Operation operation;
+  ::tensorflow::Output output_ref;
+};
+
+/// Applies sparse `updates` to individual values or slices within a given
+///
+/// variable according to `indices`.
+///
+/// `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+///
+/// `indices` must be integer tensor, containing indices into `ref`.
+/// It must be shape \\([d_0, ..., d_{Q-2}, K]\\) where `0 < K <= P`.
+///
+/// The innermost dimension of `indices` (with length `K`) corresponds to
+/// indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+/// dimension of `ref`.
+///
+/// `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+///
+/// $$[d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].$$
+///
+/// For example, say we want to update 4 scattered elements to a rank-1 tensor to
+/// 8 elements. In Python, that update would look like this:
+///
+/// ```python
+///     ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+///     indices = tf.constant([[4], [3], [1] ,[7]])
+///     updates = tf.constant([9, 10, 11, 12])
+///     update = tf.scatter_nd_update(ref, indices, updates)
+///     with tf.Session() as sess:
+///       print sess.run(update)
+/// ```
+///
+/// The resulting update to ref would look like this:
+///
+///     [1, 11, 3, 10, 9, 6, 7, 12]
+///
+/// See `tf.scatter_nd` for more details about how to make updates to
+/// slices.
+///
+/// See also `tf.scatter_update` and `tf.batch_scatter_update`.
 ///
 /// Arguments:
 /// * scope: A Scope object
@@ -691,7 +1032,7 @@ class ScatterNdUpdate {
     /// but may exhibit less contention.
     ///
     /// Defaults to true
-    Attrs UseLocking(bool x) {
+    TF_MUST_USE_RESULT Attrs UseLocking(bool x) {
       Attrs ret = *this;
       ret.use_locking_ = x;
       return ret;
@@ -712,6 +1053,7 @@ class ScatterNdUpdate {
     return Attrs().UseLocking(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output_ref;
 };
 
@@ -734,7 +1076,7 @@ class ScatterNdUpdate {
 /// Duplicate entries are handled correctly: if multiple `indices` reference
 /// the same location, their (negated) contributions add.
 ///
-/// Requires `updates.shape = indices.shape + ref.shape[1:]`.
+/// Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`.
 ///
 /// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 /// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterSub.png" alt>
@@ -761,7 +1103,7 @@ class ScatterSub {
     /// otherwise the behavior is undefined, but may exhibit less contention.
     ///
     /// Defaults to false
-    Attrs UseLocking(bool x) {
+    TF_MUST_USE_RESULT Attrs UseLocking(bool x) {
       Attrs ret = *this;
       ret.use_locking_ = x;
       return ret;
@@ -782,6 +1124,7 @@ class ScatterSub {
     return Attrs().UseLocking(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output_ref;
 };
 
@@ -807,11 +1150,13 @@ class ScatterSub {
 /// duplicate entries in `indices`, the order at which the updates happen
 /// for each value is undefined.
 ///
-/// Requires `updates.shape = indices.shape + ref.shape[1:]`.
+/// Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`.
 ///
 /// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 /// <img style="width:100%" src="https://www.tensorflow.org/images/ScatterUpdate.png" alt>
 /// </div>
+///
+/// See also `tf.batch_scatter_update` and `tf.scatter_nd_update`.
 ///
 /// Arguments:
 /// * scope: A Scope object
@@ -834,7 +1179,7 @@ class ScatterUpdate {
     /// otherwise the behavior is undefined, but may exhibit less contention.
     ///
     /// Defaults to true
-    Attrs UseLocking(bool x) {
+    TF_MUST_USE_RESULT Attrs UseLocking(bool x) {
       Attrs ret = *this;
       ret.use_locking_ = x;
       return ret;
@@ -855,6 +1200,7 @@ class ScatterUpdate {
     return Attrs().UseLocking(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output_ref;
 };
 
@@ -894,7 +1240,7 @@ class TemporaryVariable {
     /// value is the name of the 'TemporaryVariable' op (which is guaranteed unique).
     ///
     /// Defaults to ""
-    Attrs VarName(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs VarName(StringPiece x) {
       Attrs ret = *this;
       ret.var_name_ = x;
       return ret;
@@ -914,6 +1260,7 @@ class TemporaryVariable {
     return Attrs().VarName(x);
   }
 
+  Operation operation;
   ::tensorflow::Output ref;
 };
 
@@ -944,7 +1291,7 @@ class Variable {
     /// Otherwise, a default container is used.
     ///
     /// Defaults to ""
-    Attrs Container(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs Container(StringPiece x) {
       Attrs ret = *this;
       ret.container_ = x;
       return ret;
@@ -954,7 +1301,7 @@ class Variable {
     /// with this shared_name. Otherwise, the node name is used instead.
     ///
     /// Defaults to ""
-    Attrs SharedName(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs SharedName(StringPiece x) {
       Attrs ret = *this;
       ret.shared_name_ = x;
       return ret;
@@ -978,6 +1325,7 @@ class Variable {
     return Attrs().SharedName(x);
   }
 
+  Operation operation;
   ::tensorflow::Output ref;
 };
 

@@ -45,7 +45,7 @@ class FixedLengthRecordReader {
     /// Number of bytes in the header, defaults to 0.
     ///
     /// Defaults to 0
-    Attrs HeaderBytes(int64 x) {
+    TF_MUST_USE_RESULT Attrs HeaderBytes(int64 x) {
       Attrs ret = *this;
       ret.header_bytes_ = x;
       return ret;
@@ -54,7 +54,7 @@ class FixedLengthRecordReader {
     /// Number of bytes in the footer, defaults to 0.
     ///
     /// Defaults to 0
-    Attrs FooterBytes(int64 x) {
+    TF_MUST_USE_RESULT Attrs FooterBytes(int64 x) {
       Attrs ret = *this;
       ret.footer_bytes_ = x;
       return ret;
@@ -64,7 +64,7 @@ class FixedLengthRecordReader {
     /// record_bytes.
     ///
     /// Defaults to 0
-    Attrs HopBytes(int64 x) {
+    TF_MUST_USE_RESULT Attrs HopBytes(int64 x) {
       Attrs ret = *this;
       ret.hop_bytes_ = x;
       return ret;
@@ -74,7 +74,7 @@ class FixedLengthRecordReader {
     /// Otherwise, a default container is used.
     ///
     /// Defaults to ""
-    Attrs Container(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs Container(StringPiece x) {
       Attrs ret = *this;
       ret.container_ = x;
       return ret;
@@ -84,7 +84,7 @@ class FixedLengthRecordReader {
     /// with this shared_name. Otherwise, the node name is used instead.
     ///
     /// Defaults to ""
-    Attrs SharedName(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs SharedName(StringPiece x) {
       Attrs ret = *this;
       ret.shared_name_ = x;
       return ret;
@@ -94,7 +94,7 @@ class FixedLengthRecordReader {
     /// are supported. Defaults to none.
     ///
     /// Defaults to ""
-    Attrs Encoding(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs Encoding(StringPiece x) {
       Attrs ret = *this;
       ret.encoding_ = x;
       return ret;
@@ -133,6 +133,7 @@ class FixedLengthRecordReader {
     return Attrs().Encoding(x);
   }
 
+  Operation operation;
   ::tensorflow::Output reader_handle;
 };
 
@@ -160,7 +161,7 @@ class IdentityReader {
     /// Otherwise, a default container is used.
     ///
     /// Defaults to ""
-    Attrs Container(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs Container(StringPiece x) {
       Attrs ret = *this;
       ret.container_ = x;
       return ret;
@@ -170,7 +171,7 @@ class IdentityReader {
     /// with this shared_name. Otherwise, the node name is used instead.
     ///
     /// Defaults to ""
-    Attrs SharedName(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs SharedName(StringPiece x) {
       Attrs ret = *this;
       ret.shared_name_ = x;
       return ret;
@@ -193,6 +194,7 @@ class IdentityReader {
     return Attrs().SharedName(x);
   }
 
+  Operation operation;
   ::tensorflow::Output reader_handle;
 };
 
@@ -217,7 +219,7 @@ class LMDBReader {
     /// Otherwise, a default container is used.
     ///
     /// Defaults to ""
-    Attrs Container(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs Container(StringPiece x) {
       Attrs ret = *this;
       ret.container_ = x;
       return ret;
@@ -227,7 +229,7 @@ class LMDBReader {
     /// with this shared_name. Otherwise, the node name is used instead.
     ///
     /// Defaults to ""
-    Attrs SharedName(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs SharedName(StringPiece x) {
       Attrs ret = *this;
       ret.shared_name_ = x;
       return ret;
@@ -249,6 +251,7 @@ class LMDBReader {
     return Attrs().SharedName(x);
   }
 
+  Operation operation;
   ::tensorflow::Output reader_handle;
 };
 
@@ -256,6 +259,7 @@ class LMDBReader {
 ///
 /// Note that this routine only supports wildcard characters in the
 /// basename portion of the pattern, not in the directory portion.
+/// Note also that the order of filenames returned can be non-deterministic.
 ///
 /// Arguments:
 /// * scope: A Scope object
@@ -270,6 +274,7 @@ class MatchingFiles {
   operator ::tensorflow::Input() const { return filenames; }
   ::tensorflow::Node* node() const { return filenames.node(); }
 
+  Operation operation;
   ::tensorflow::Output filenames;
 };
 
@@ -302,7 +307,7 @@ class MergeV2Checkpoints {
     /// see above.
     ///
     /// Defaults to true
-    Attrs DeleteOldDirs(bool x) {
+    TF_MUST_USE_RESULT Attrs DeleteOldDirs(bool x) {
       Attrs ret = *this;
       ret.delete_old_dirs_ = x;
       return ret;
@@ -338,6 +343,7 @@ class ReadFile {
   operator ::tensorflow::Input() const { return contents; }
   ::tensorflow::Node* node() const { return contents.node(); }
 
+  Operation operation;
   ::tensorflow::Output contents;
 };
 
@@ -360,6 +366,7 @@ class ReaderNumRecordsProduced {
   operator ::tensorflow::Input() const { return records_produced; }
   ::tensorflow::Node* node() const { return records_produced.node(); }
 
+  Operation operation;
   ::tensorflow::Output records_produced;
 };
 
@@ -379,6 +386,7 @@ class ReaderNumWorkUnitsCompleted {
   operator ::tensorflow::Input() const { return units_completed; }
   ::tensorflow::Node* node() const { return units_completed.node(); }
 
+  Operation operation;
   ::tensorflow::Output units_completed;
 };
 
@@ -404,6 +412,7 @@ class ReaderReadUpTo {
                reader_handle, ::tensorflow::Input queue_handle,
                ::tensorflow::Input num_records);
 
+  Operation operation;
   ::tensorflow::Output keys;
   ::tensorflow::Output values;
 };
@@ -427,6 +436,7 @@ class ReaderRead {
   ReaderRead(const ::tensorflow::Scope& scope, ::tensorflow::Input reader_handle,
            ::tensorflow::Input queue_handle);
 
+  Operation operation;
   ::tensorflow::Output key;
   ::tensorflow::Output value;
 };
@@ -489,6 +499,7 @@ class ReaderSerializeState {
   operator ::tensorflow::Input() const { return state; }
   ::tensorflow::Node* node() const { return state.node(); }
 
+  Operation operation;
   ::tensorflow::Output state;
 };
 
@@ -533,7 +544,7 @@ class Restore {
     /// `file_pattern`.
     ///
     /// Defaults to -1
-    Attrs PreferredShard(int64 x) {
+    TF_MUST_USE_RESULT Attrs PreferredShard(int64 x) {
       Attrs ret = *this;
       ret.preferred_shard_ = x;
       return ret;
@@ -554,6 +565,7 @@ class Restore {
     return Attrs().PreferredShard(x);
   }
 
+  Operation operation;
   ::tensorflow::Output tensor;
 };
 
@@ -590,7 +602,7 @@ class RestoreSlice {
     /// `file_pattern`. See the documentation for `Restore`.
     ///
     /// Defaults to -1
-    Attrs PreferredShard(int64 x) {
+    TF_MUST_USE_RESULT Attrs PreferredShard(int64 x) {
       Attrs ret = *this;
       ret.preferred_shard_ = x;
       return ret;
@@ -612,6 +624,7 @@ class RestoreSlice {
     return Attrs().PreferredShard(x);
   }
 
+  Operation operation;
   ::tensorflow::Output tensor;
 };
 
@@ -651,6 +664,7 @@ class RestoreV2 {
   ::tensorflow::Output operator[](size_t index) const { return tensors[index]; }
 
 
+  Operation operation;
   ::tensorflow::OutputList tensors;
 };
 
@@ -768,6 +782,7 @@ class ShardedFilename {
   operator ::tensorflow::Input() const { return filename; }
   ::tensorflow::Node* node() const { return filename.node(); }
 
+  Operation operation;
   ::tensorflow::Output filename;
 };
 
@@ -786,6 +801,7 @@ class ShardedFilespec {
   operator ::tensorflow::Input() const { return filename; }
   ::tensorflow::Node* node() const { return filename.node(); }
 
+  Operation operation;
   ::tensorflow::Output filename;
 };
 
@@ -810,7 +826,7 @@ class TFRecordReader {
     /// Otherwise, a default container is used.
     ///
     /// Defaults to ""
-    Attrs Container(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs Container(StringPiece x) {
       Attrs ret = *this;
       ret.container_ = x;
       return ret;
@@ -820,14 +836,14 @@ class TFRecordReader {
     /// with this shared_name. Otherwise, the node name is used instead.
     ///
     /// Defaults to ""
-    Attrs SharedName(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs SharedName(StringPiece x) {
       Attrs ret = *this;
       ret.shared_name_ = x;
       return ret;
     }
 
     /// Defaults to ""
-    Attrs CompressionType(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs CompressionType(StringPiece x) {
       Attrs ret = *this;
       ret.compression_type_ = x;
       return ret;
@@ -854,6 +870,7 @@ class TFRecordReader {
     return Attrs().CompressionType(x);
   }
 
+  Operation operation;
   ::tensorflow::Output reader_handle;
 };
 
@@ -878,7 +895,7 @@ class TextLineReader {
     /// Number of lines to skip from the beginning of every file.
     ///
     /// Defaults to 0
-    Attrs SkipHeaderLines(int64 x) {
+    TF_MUST_USE_RESULT Attrs SkipHeaderLines(int64 x) {
       Attrs ret = *this;
       ret.skip_header_lines_ = x;
       return ret;
@@ -888,7 +905,7 @@ class TextLineReader {
     /// Otherwise, a default container is used.
     ///
     /// Defaults to ""
-    Attrs Container(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs Container(StringPiece x) {
       Attrs ret = *this;
       ret.container_ = x;
       return ret;
@@ -898,7 +915,7 @@ class TextLineReader {
     /// with this shared_name. Otherwise, the node name is used instead.
     ///
     /// Defaults to ""
-    Attrs SharedName(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs SharedName(StringPiece x) {
       Attrs ret = *this;
       ret.shared_name_ = x;
       return ret;
@@ -925,6 +942,7 @@ class TextLineReader {
     return Attrs().SharedName(x);
   }
 
+  Operation operation;
   ::tensorflow::Output reader_handle;
 };
 
@@ -952,7 +970,7 @@ class WholeFileReader {
     /// Otherwise, a default container is used.
     ///
     /// Defaults to ""
-    Attrs Container(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs Container(StringPiece x) {
       Attrs ret = *this;
       ret.container_ = x;
       return ret;
@@ -962,7 +980,7 @@ class WholeFileReader {
     /// with this shared_name. Otherwise, the node name is used instead.
     ///
     /// Defaults to ""
-    Attrs SharedName(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs SharedName(StringPiece x) {
       Attrs ret = *this;
       ret.shared_name_ = x;
       return ret;
@@ -985,6 +1003,7 @@ class WholeFileReader {
     return Attrs().SharedName(x);
   }
 
+  Operation operation;
   ::tensorflow::Output reader_handle;
 };
 

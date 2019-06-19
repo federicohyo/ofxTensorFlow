@@ -77,6 +77,7 @@
 # incorporated directly into the final executable application binary.
 ################################################################################
 # PROJECT_LDFLAGS=-Wl,-rpath=./libs
+PROJECT_LDFLAGS=-Wl,--allow-multiple-definition -Wl,--whole-archive
 
 ################################################################################
 # PROJECT DEFINES

@@ -13,13 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_NODE_DEF_BUILDER_H_
-#define TENSORFLOW_FRAMEWORK_NODE_DEF_BUILDER_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_NODE_DEF_BUILDER_H_
+#define TENSORFLOW_CORE_FRAMEWORK_NODE_DEF_BUILDER_H_
 
 #include <functional>
 #include <vector>
 #include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -176,4 +175,4 @@ class NodeDefBuilder {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_NODE_DEF_BUILDER_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_NODE_DEF_BUILDER_H_

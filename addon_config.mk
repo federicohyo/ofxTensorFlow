@@ -29,9 +29,9 @@ common:
 	# include search paths, this will be usually parsed from the file system
 	# but if the addon or addon libraries need special search paths they can be
 	# specified here separated by spaces or one per line using +=
-       #ADDON_INCLUDES = src
-       #ADDON_INCLUDES += libs/tensorflow/include
-       #ADDON_INCLUDES += libs/google/include
+	#ADDON_INCLUDES = src
+	ADDON_INCLUDES += libs/tensorflow/include
+	ADDON_INCLUDES += libs/google/include
 
 	# the last one is different every time the lib is compiled
 	# need to find a fix
@@ -39,11 +39,11 @@ common:
 
 	# any special flag that should be passed to the compiler when using this
 	# addon
-	# ADDON_CFLAGS =
+	ADDON_CFLAGS = -Wl,--allow-multiple-definition -Wl,--whole-archive
 	
 	# any special flag that should be passed to the linker when using this
 	# addon, also used for system libraries with -lname
-        # ADDON_LDFLAGS =
+        ADDON_LDFLAGS = -l/home/federico/.local/lib/libtensorflow_cc.so -Wl,--whole-archive -Wl,--allow-multiple-definition -l/home/federico/.local/lib/libtensorflow_framework.so -Wl,--whole-archive -Wl,--allow-multiple-definition
 	
 	# linux only, any library that should be included in the project using
 	# pkg-config
@@ -71,7 +71,7 @@ common:
 	# ADDON_LIBS_EXCLUDE =
 	
 linux64:
-       # ADDON_LDFLAGS += libs/tensorflow/lib/linux64/libtensorflow.so
+	# ADDON_LDFLAGS += libs/tensorflow/lib/linux64/libtensorflow.so
 	
 linux:
 

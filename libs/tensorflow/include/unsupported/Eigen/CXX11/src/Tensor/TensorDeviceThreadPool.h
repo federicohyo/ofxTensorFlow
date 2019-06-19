@@ -154,7 +154,11 @@ struct ThreadPoolDevice {
 
   template <class Function, class... Args>
   EIGEN_STRONG_INLINE void enqueueNoNotification(Function&& f, Args&&... args) const {
-    pool_->Schedule(std::bind(f, args...));
+    if (sizeof...(args) > 0) {
+      pool_->Schedule(std::bind(f, args...));
+    } else {
+      pool_->Schedule(f);
+    }
   }
 
   // Returns a logical thread index between 0 and pool_->NumThreads() - 1 if
@@ -165,7 +169,7 @@ struct ThreadPoolDevice {
 
   // parallelFor executes f with [0, n) arguments in parallel and waits for
   // completion. F accepts a half-open interval [first, last).
-  // Block size is choosen based on the iteration cost and resulting parallel
+  // Block size is chosen based on the iteration cost and resulting parallel
   // efficiency. If block_align is not nullptr, it is called to round up the
   // block size.
   void parallelFor(Index n, const TensorOpCost& cost,
@@ -185,9 +189,11 @@ struct ThreadPoolDevice {
     // of blocks to be evenly dividable across threads.
 
     double block_size_f = 1.0 / CostModel::taskSize(1, cost);
-    Index block_size = numext::mini(n, numext::maxi<Index>(1, block_size_f));
-    const Index max_block_size =
-        numext::mini(n, numext::maxi<Index>(1, 2 * block_size_f));
+    const Index max_oversharding_factor = 4;
+    Index block_size = numext::mini(
+        n, numext::maxi<Index>(divup<Index>(n, max_oversharding_factor * numThreads()),
+                               block_size_f));
+    const Index max_block_size = numext::mini(n, 2 * block_size);
     if (block_align) {
       Index new_block_size = block_align(block_size);
       eigen_assert(new_block_size >= block_size);
@@ -201,7 +207,8 @@ struct ThreadPoolDevice {
         (divup<int>(block_count, numThreads()) * numThreads());
     // Now try to increase block size up to max_block_size as long as it
     // doesn't decrease parallel efficiency.
-    for (Index prev_block_count = block_count; prev_block_count > 1;) {
+    for (Index prev_block_count = block_count;
+         max_efficiency < 1.0 && prev_block_count > 1;) {
       // This is the next block size that divides size into a smaller number
       // of blocks than the current block_size.
       Index coarser_block_size = divup(n, prev_block_count - 1);
@@ -256,6 +263,9 @@ struct ThreadPoolDevice {
                    std::function<void(Index, Index)> f) const {
     parallelFor(n, cost, nullptr, std::move(f));
   }
+
+  // Thread pool accessor.
+  ThreadPoolInterface* getPool() const { return pool_; }
 
  private:
   ThreadPoolInterface* pool_;

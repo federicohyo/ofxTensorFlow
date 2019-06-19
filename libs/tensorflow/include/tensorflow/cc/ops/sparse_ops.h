@@ -66,7 +66,7 @@ class AddManySparseToTensorsMap {
     /// The container name for the `SparseTensorsMap` created by this op.
     ///
     /// Defaults to ""
-    Attrs Container(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs Container(StringPiece x) {
       Attrs ret = *this;
       ret.container_ = x;
       return ret;
@@ -76,7 +76,7 @@ class AddManySparseToTensorsMap {
     /// If blank, the new Operation's unique name is used.
     ///
     /// Defaults to ""
-    Attrs SharedName(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs SharedName(StringPiece x) {
       Attrs ret = *this;
       ret.shared_name_ = x;
       return ret;
@@ -103,6 +103,7 @@ class AddManySparseToTensorsMap {
     return Attrs().SharedName(x);
   }
 
+  Operation operation;
   ::tensorflow::Output sparse_handles;
 };
 
@@ -144,7 +145,7 @@ class AddSparseToTensorsMap {
     /// The container name for the `SparseTensorsMap` created by this op.
     ///
     /// Defaults to ""
-    Attrs Container(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs Container(StringPiece x) {
       Attrs ret = *this;
       ret.container_ = x;
       return ret;
@@ -154,7 +155,7 @@ class AddSparseToTensorsMap {
     /// If blank, the new Operation's unique name is used.
     ///
     /// Defaults to ""
-    Attrs SharedName(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs SharedName(StringPiece x) {
       Attrs ret = *this;
       ret.shared_name_ = x;
       return ret;
@@ -181,6 +182,7 @@ class AddSparseToTensorsMap {
     return Attrs().SharedName(x);
   }
 
+  Operation operation;
   ::tensorflow::Output sparse_handle;
 };
 
@@ -243,12 +245,78 @@ class DeserializeManySparse {
   DeserializeManySparse(const ::tensorflow::Scope& scope, ::tensorflow::Input
                       serialized_sparse, DataType dtype);
 
+  Operation operation;
   ::tensorflow::Output sparse_indices;
   ::tensorflow::Output sparse_values;
   ::tensorflow::Output sparse_shape;
 };
 
-/// Serialize an `N`-minibatch `SparseTensor` into an `[N, 3]` string `Tensor`.
+/// Deserialize `SparseTensor` objects.
+///
+/// The input `serialized_sparse` must have the shape `[?, ?, ..., ?, 3]` where
+/// the last dimension stores serialized `SparseTensor` objects and the other N
+/// dimensions (N >= 0) correspond to a batch. The ranks of the original
+/// `SparseTensor` objects must all match. When the final `SparseTensor` is
+/// created, its rank is the rank of the incoming `SparseTensor` objects plus N;
+/// the sparse tensors have been concatenated along new dimensions, one for each
+/// batch.
+///
+/// The output `SparseTensor` object's shape values for the original dimensions
+/// are the max across the input `SparseTensor` objects' shape values for the
+/// corresponding dimensions. The new dimensions match the size of the batch.
+///
+/// The input `SparseTensor` objects' indices are assumed ordered in
+/// standard lexicographic order.  If this is not the case, after this
+/// step run `SparseReorder` to restore index ordering.
+///
+/// For example, if the serialized input is a `[2 x 3]` matrix representing two
+/// original `SparseTensor` objects:
+///
+///     index = [ 0]
+///             [10]
+///             [20]
+///     values = [1, 2, 3]
+///     shape = [50]
+///
+/// and
+///
+///     index = [ 2]
+///             [10]
+///     values = [4, 5]
+///     shape = [30]
+///
+/// then the final deserialized `SparseTensor` will be:
+///
+///     index = [0  0]
+///             [0 10]
+///             [0 20]
+///             [1  2]
+///             [1 10]
+///     values = [1, 2, 3, 4, 5]
+///     shape = [2 50]
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * serialized_sparse: The serialized `SparseTensor` objects. The last dimension
+/// must have 3 columns.
+/// * dtype: The `dtype` of the serialized `SparseTensor` objects.
+///
+/// Returns:
+/// * `Output` sparse_indices
+/// * `Output` sparse_values
+/// * `Output` sparse_shape
+class DeserializeSparse {
+ public:
+  DeserializeSparse(const ::tensorflow::Scope& scope, ::tensorflow::Input
+                  serialized_sparse, DataType dtype);
+
+  Operation operation;
+  ::tensorflow::Output sparse_indices;
+  ::tensorflow::Output sparse_values;
+  ::tensorflow::Output sparse_shape;
+};
+
+/// Serialize an `N`-minibatch `SparseTensor` into an `[N, 3]` `Tensor` object.
 ///
 /// The `SparseTensor` must have rank `R` greater than 1, and the first dimension
 /// is treated as the minibatch dimension.  Elements of the `SparseTensor`
@@ -264,21 +332,48 @@ class DeserializeManySparse {
 /// * sparse_values: 1-D.  The `values` of the minibatch `SparseTensor`.
 /// * sparse_shape: 1-D.  The `shape` of the minibatch `SparseTensor`.
 ///
+/// Optional attributes (see `Attrs`):
+/// * out_type: The `dtype` to use for serialization; the supported types are `string`
+/// (default) and `variant`.
+///
 /// Returns:
 /// * `Output`: The serialized_sparse tensor.
 class SerializeManySparse {
  public:
+  /// Optional attribute setters for SerializeManySparse
+  struct Attrs {
+    /// The `dtype` to use for serialization; the supported types are `string`
+    /// (default) and `variant`.
+    ///
+    /// Defaults to DT_STRING
+    TF_MUST_USE_RESULT Attrs OutType(DataType x) {
+      Attrs ret = *this;
+      ret.out_type_ = x;
+      return ret;
+    }
+
+    DataType out_type_ = DT_STRING;
+  };
   SerializeManySparse(const ::tensorflow::Scope& scope, ::tensorflow::Input
                     sparse_indices, ::tensorflow::Input sparse_values,
                     ::tensorflow::Input sparse_shape);
+  SerializeManySparse(const ::tensorflow::Scope& scope, ::tensorflow::Input
+                    sparse_indices, ::tensorflow::Input sparse_values,
+                    ::tensorflow::Input sparse_shape, const
+                    SerializeManySparse::Attrs& attrs);
   operator ::tensorflow::Output() const { return serialized_sparse; }
   operator ::tensorflow::Input() const { return serialized_sparse; }
   ::tensorflow::Node* node() const { return serialized_sparse.node(); }
 
+  static Attrs OutType(DataType x) {
+    return Attrs().OutType(x);
+  }
+
+  Operation operation;
   ::tensorflow::Output serialized_sparse;
 };
 
-/// Serialize a `SparseTensor` into a string 3-vector (1-D `Tensor`) object.
+/// Serialize a `SparseTensor` into a `[3]` `Tensor` object.
 ///
 /// Arguments:
 /// * scope: A Scope object
@@ -286,17 +381,44 @@ class SerializeManySparse {
 /// * sparse_values: 1-D.  The `values` of the `SparseTensor`.
 /// * sparse_shape: 1-D.  The `shape` of the `SparseTensor`.
 ///
+/// Optional attributes (see `Attrs`):
+/// * out_type: The `dtype` to use for serialization; the supported types are `string`
+/// (default) and `variant`.
+///
 /// Returns:
 /// * `Output`: The serialized_sparse tensor.
 class SerializeSparse {
  public:
+  /// Optional attribute setters for SerializeSparse
+  struct Attrs {
+    /// The `dtype` to use for serialization; the supported types are `string`
+    /// (default) and `variant`.
+    ///
+    /// Defaults to DT_STRING
+    TF_MUST_USE_RESULT Attrs OutType(DataType x) {
+      Attrs ret = *this;
+      ret.out_type_ = x;
+      return ret;
+    }
+
+    DataType out_type_ = DT_STRING;
+  };
   SerializeSparse(const ::tensorflow::Scope& scope, ::tensorflow::Input
                 sparse_indices, ::tensorflow::Input sparse_values,
                 ::tensorflow::Input sparse_shape);
+  SerializeSparse(const ::tensorflow::Scope& scope, ::tensorflow::Input
+                sparse_indices, ::tensorflow::Input sparse_values,
+                ::tensorflow::Input sparse_shape, const SerializeSparse::Attrs&
+                attrs);
   operator ::tensorflow::Output() const { return serialized_sparse; }
   operator ::tensorflow::Input() const { return serialized_sparse; }
   ::tensorflow::Node* node() const { return serialized_sparse.node(); }
 
+  static Attrs OutType(DataType x) {
+    return Attrs().OutType(x);
+  }
+
+  Operation operation;
   ::tensorflow::Output serialized_sparse;
 };
 
@@ -338,6 +460,7 @@ class SparseAdd {
           ::tensorflow::Input b_indices, ::tensorflow::Input b_values,
           ::tensorflow::Input b_shape, ::tensorflow::Input thresh);
 
+  Operation operation;
   ::tensorflow::Output sum_indices;
   ::tensorflow::Output sum_values;
   ::tensorflow::Output sum_shape;
@@ -370,6 +493,7 @@ class SparseAddGrad {
               backprop_val_grad, ::tensorflow::Input a_indices,
               ::tensorflow::Input b_indices, ::tensorflow::Input sum_indices);
 
+  Operation operation;
   ::tensorflow::Output a_val_grad;
   ::tensorflow::Output b_val_grad;
 };
@@ -436,6 +560,7 @@ class SparseConcat {
              ::tensorflow::InputList values, ::tensorflow::InputList shapes,
              int64 concat_dim);
 
+  Operation operation;
   ::tensorflow::Output output_indices;
   ::tensorflow::Output output_values;
   ::tensorflow::Output output_shape;
@@ -506,6 +631,7 @@ class SparseCross {
             num_buckets, int64 hash_key, DataType out_type, DataType
             internal_type);
 
+  Operation operation;
   ::tensorflow::Output output_indices;
   ::tensorflow::Output output_values;
   ::tensorflow::Output output_shape;
@@ -541,6 +667,7 @@ class SparseDenseCwiseAdd {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -568,6 +695,7 @@ class SparseDenseCwiseDiv {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -599,6 +727,7 @@ class SparseDenseCwiseMul {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -662,6 +791,7 @@ class SparseFillEmptyRows {
                     indices, ::tensorflow::Input values, ::tensorflow::Input
                     dense_shape, ::tensorflow::Input default_value);
 
+  Operation operation;
   ::tensorflow::Output output_indices;
   ::tensorflow::Output output_values;
   ::tensorflow::Output empty_row_indicator;
@@ -692,6 +822,7 @@ class SparseFillEmptyRowsGrad {
   SparseFillEmptyRowsGrad(const ::tensorflow::Scope& scope, ::tensorflow::Input
                         reverse_index_map, ::tensorflow::Input grad_values);
 
+  Operation operation;
   ::tensorflow::Output d_values;
   ::tensorflow::Output d_default_value;
 };
@@ -731,7 +862,7 @@ class SparseReduceMax {
     /// If true, retain reduced dimensions with length 1.
     ///
     /// Defaults to false
-    Attrs KeepDims(bool x) {
+    TF_MUST_USE_RESULT Attrs KeepDims(bool x) {
       Attrs ret = *this;
       ret.keep_dims_ = x;
       return ret;
@@ -755,6 +886,7 @@ class SparseReduceMax {
     return Attrs().KeepDims(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -795,7 +927,7 @@ class SparseReduceMaxSparse {
     /// If true, retain reduced dimensions with length 1.
     ///
     /// Defaults to false
-    Attrs KeepDims(bool x) {
+    TF_MUST_USE_RESULT Attrs KeepDims(bool x) {
       Attrs ret = *this;
       ret.keep_dims_ = x;
       return ret;
@@ -817,6 +949,7 @@ class SparseReduceMaxSparse {
     return Attrs().KeepDims(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output_indices;
   ::tensorflow::Output output_values;
   ::tensorflow::Output output_shape;
@@ -857,7 +990,7 @@ class SparseReduceSum {
     /// If true, retain reduced dimensions with length 1.
     ///
     /// Defaults to false
-    Attrs KeepDims(bool x) {
+    TF_MUST_USE_RESULT Attrs KeepDims(bool x) {
       Attrs ret = *this;
       ret.keep_dims_ = x;
       return ret;
@@ -881,6 +1014,7 @@ class SparseReduceSum {
     return Attrs().KeepDims(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -921,7 +1055,7 @@ class SparseReduceSumSparse {
     /// If true, retain reduced dimensions with length 1.
     ///
     /// Defaults to false
-    Attrs KeepDims(bool x) {
+    TF_MUST_USE_RESULT Attrs KeepDims(bool x) {
       Attrs ret = *this;
       ret.keep_dims_ = x;
       return ret;
@@ -943,6 +1077,7 @@ class SparseReduceSumSparse {
     return Attrs().KeepDims(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output_indices;
   ::tensorflow::Output output_values;
   ::tensorflow::Output output_shape;
@@ -976,6 +1111,7 @@ class SparseReorder {
               input_indices, ::tensorflow::Input input_values,
               ::tensorflow::Input input_shape);
 
+  Operation operation;
   ::tensorflow::Output output_indices;
   ::tensorflow::Output output_values;
 };
@@ -1017,6 +1153,7 @@ class SparseReshape {
               input_indices, ::tensorflow::Input input_shape,
               ::tensorflow::Input new_shape);
 
+  Operation operation;
   ::tensorflow::Output output_indices;
   ::tensorflow::Output output_shape;
 };
@@ -1061,9 +1198,40 @@ class SparseSlice {
             ::tensorflow::Input values, ::tensorflow::Input shape,
             ::tensorflow::Input start, ::tensorflow::Input size);
 
+  Operation operation;
   ::tensorflow::Output output_indices;
   ::tensorflow::Output output_values;
   ::tensorflow::Output output_shape;
+};
+
+/// The gradient operator for the SparseSlice op.
+///
+/// This op takes in the upstream gradient w.r.t. non-empty values of
+/// the sliced `SparseTensor`, and outputs the gradients w.r.t.
+/// the non-empty values of input `SparseTensor`.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * backprop_val_grad: 1-D. The gradient with respect to
+/// the non-empty values of the sliced `SparseTensor`.
+/// * input_indices: 2-D.  The `indices` of the input `SparseTensor`.
+/// * input_start: 1-D. tensor represents the start of the slice.
+/// * output_indices: 2-D.  The `indices` of the sliced `SparseTensor`.
+///
+/// Returns:
+/// * `Output`: 1-D. The gradient with respect to the non-empty values of input `SparseTensor`.
+class SparseSliceGrad {
+ public:
+  SparseSliceGrad(const ::tensorflow::Scope& scope, ::tensorflow::Input
+                backprop_val_grad, ::tensorflow::Input input_indices,
+                ::tensorflow::Input input_start, ::tensorflow::Input
+                output_indices);
+  operator ::tensorflow::Output() const { return val_grad; }
+  operator ::tensorflow::Input() const { return val_grad; }
+  ::tensorflow::Node* node() const { return val_grad.node(); }
+
+  Operation operation;
+  ::tensorflow::Output val_grad;
 };
 
 /// Applies softmax to a batched N-D `SparseTensor`.
@@ -1101,6 +1269,7 @@ class SparseSoftmax {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -1128,6 +1297,7 @@ class SparseSparseMaximum {
                     ::tensorflow::Input a_shape, ::tensorflow::Input b_indices,
                     ::tensorflow::Input b_values, ::tensorflow::Input b_shape);
 
+  Operation operation;
   ::tensorflow::Output output_indices;
   ::tensorflow::Output output_values;
 };
@@ -1156,6 +1326,7 @@ class SparseSparseMinimum {
                     ::tensorflow::Input a_shape, ::tensorflow::Input b_indices,
                     ::tensorflow::Input b_values, ::tensorflow::Input b_shape);
 
+  Operation operation;
   ::tensorflow::Output output_indices;
   ::tensorflow::Output output_values;
 };
@@ -1203,6 +1374,7 @@ class SparseSplit {
             ::tensorflow::Input indices, ::tensorflow::Input values,
             ::tensorflow::Input shape, int64 num_split);
 
+  Operation operation;
   ::tensorflow::OutputList output_indices;
   ::tensorflow::OutputList output_values;
   ::tensorflow::OutputList output_shape;
@@ -1230,6 +1402,7 @@ class SparseTensorDenseAdd {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -1268,7 +1441,7 @@ class SparseTensorDenseMatMul {
     /// is transpose(conj(A)).  Otherwise it's transpose(A).
     ///
     /// Defaults to false
-    Attrs AdjointA(bool x) {
+    TF_MUST_USE_RESULT Attrs AdjointA(bool x) {
       Attrs ret = *this;
       ret.adjoint_a_ = x;
       return ret;
@@ -1278,7 +1451,7 @@ class SparseTensorDenseMatMul {
     /// is transpose(conj(B)).  Otherwise it's transpose(B).
     ///
     /// Defaults to false
-    Attrs AdjointB(bool x) {
+    TF_MUST_USE_RESULT Attrs AdjointB(bool x) {
       Attrs ret = *this;
       ret.adjoint_b_ = x;
       return ret;
@@ -1305,6 +1478,7 @@ class SparseTensorDenseMatMul {
     return Attrs().AdjointB(x);
   }
 
+  Operation operation;
   ::tensorflow::Output product;
 };
 
@@ -1354,7 +1528,7 @@ class SparseToDense {
     /// lexicographic order and that there are no repeats.
     ///
     /// Defaults to true
-    Attrs ValidateIndices(bool x) {
+    TF_MUST_USE_RESULT Attrs ValidateIndices(bool x) {
       Attrs ret = *this;
       ret.validate_indices_ = x;
       return ret;
@@ -1378,6 +1552,7 @@ class SparseToDense {
     return Attrs().ValidateIndices(x);
   }
 
+  Operation operation;
   ::tensorflow::Output dense;
 };
 
@@ -1456,7 +1631,7 @@ class TakeManySparseFromTensorsMap {
     /// The container name for the `SparseTensorsMap` read by this op.
     ///
     /// Defaults to ""
-    Attrs Container(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs Container(StringPiece x) {
       Attrs ret = *this;
       ret.container_ = x;
       return ret;
@@ -1467,7 +1642,7 @@ class TakeManySparseFromTensorsMap {
     /// of the Op that created the original `SparseTensorsMap` should be used.
     ///
     /// Defaults to ""
-    Attrs SharedName(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs SharedName(StringPiece x) {
       Attrs ret = *this;
       ret.shared_name_ = x;
       return ret;
@@ -1491,6 +1666,7 @@ class TakeManySparseFromTensorsMap {
     return Attrs().SharedName(x);
   }
 
+  Operation operation;
   ::tensorflow::Output sparse_indices;
   ::tensorflow::Output sparse_values;
   ::tensorflow::Output sparse_shape;

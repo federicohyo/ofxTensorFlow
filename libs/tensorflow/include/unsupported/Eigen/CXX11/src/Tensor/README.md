@@ -581,7 +581,7 @@ is not initialized.
 
 Creates a tensor mapping an existing array of data. The data must not be freed
 until the TensorMap is discarded, and the size of the data must be large enough
-to accomodate of the coefficients of the tensor.
+to accommodate the coefficients of the tensor.
 
     float data[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
     Eigen::TensorMap<Tensor<float, 2>> a(data, 3, 4);
@@ -1013,16 +1013,23 @@ multidimensional case.
     Eigen::Tensor<int, 2> a(2, 3);
     a.setValues({{1, 2, 3}, {6, 5, 4}});
     Eigen::Tensor<int, 2> b(3, 2);
-    a.setValues({{1, 2}, {4, 5}, {5, 6}});
+    b.setValues({{1, 2}, {4, 5}, {5, 6}});
 
     // Compute the traditional matrix product
-    array<IndexPair<int>, 1> product_dims = { IndexPair(1, 0) };
+    Eigen::array<Eigen::IndexPair<int>, 1> product_dims = { Eigen::IndexPair<int>(1, 0) };
     Eigen::Tensor<int, 2> AB = a.contract(b, product_dims);
 
     // Compute the product of the transpose of the matrices
-    array<IndexPair<int>, 1> transpose_product_dims = { IndexPair(0, 1) };
+    Eigen::array<Eigen::IndexPair<int>, 1> transposed_product_dims = { Eigen::IndexPair<int>(0, 1) };
     Eigen::Tensor<int, 2> AtBt = a.contract(b, transposed_product_dims);
 
+    // Contraction to scalar value using a double contraction.
+    // First coordinate of both tensors are contracted as well as both second coordinates, i.e., this computes the sum of the squares of the elements.
+    Eigen::array<Eigen::IndexPair<int>, 2> double_contraction_product_dims = { Eigen::IndexPair<int>(0, 0), Eigen::IndexPair<int>(1, 1) };
+    Eigen::Tensor<int, 0> AdoubleContractedA = a.contract(a, double_contraction_product_dims);
+
+    // Extracting the scalar value of the tensor contraction for further usage
+    int value = AdoubleContractedA(0);
 
 ## Reduction Operations
 
@@ -1166,6 +1173,58 @@ short-circuiting, so may be significantly inefficient.
 
 Reduce a tensor using a user-defined reduction operator.  See ```SumReducer```
 in TensorFunctors.h for information on how to implement a reduction operator.
+
+
+## Trace
+
+A *Trace* operation returns a tensor with fewer dimensions than the original
+tensor. It returns a tensor whose elements are the sum of the elements of the
+original tensor along the main diagonal for a list of specified dimensions, the
+"trace dimensions". Similar to the ```Reduction Dimensions```, the trace dimensions
+are passed as an input parameter to the operation, are of type ```<TensorType>::Dimensions```
+, and have the same requirements when passed as an input parameter. In addition,
+the trace dimensions must have the same size.
+
+Example: Trace along 2 dimensions.
+
+    // Create a tensor of 3 dimensions
+    Eigen::Tensor<int, 3> a(2, 2, 3);
+    a.setValues({{{1, 2, 3}, {4, 5, 6}}, {{7, 8, 9}, {10, 11, 12}}});
+    // Specify the dimensions along which the trace will be computed.
+    // In this example, the trace can only be computed along the dimensions
+    // with indices 0 and 1
+    Eigen::array<int, 2> dims({0, 1});
+    // The output tensor contains all but the trace dimensions.
+    Tensor<int, 1> a_trace = a.trace(dims);
+    cout << "a_trace:" << endl;
+    cout << a_trace << endl;
+    =>
+    a_trace:
+    11
+    13
+    15
+
+
+### <Operation> trace(const Dimensions& new_dims)
+### <Operation> trace()
+
+As a special case, if no parameter is passed to the operation, trace is computed
+along *all* dimensions of the input tensor.
+
+Example: Trace along all dimensions.
+
+    // Create a tensor of 3 dimensions, with all dimensions having the same size.
+    Eigen::Tensor<int, 3> a(3, 3, 3);
+    a.setValues({{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}},
+                {{10, 11, 12}, {13, 14, 15}, {16, 17, 18}},
+                {{19, 20, 21}, {22, 23, 24}, {25, 26, 27}}});
+    // Result is a zero dimension tensor
+    Tensor<int, 0> a_trace = a.trace();
+    cout<<"a_trace:"<<endl;
+    cout<<a_trace<<endl;
+    =>
+    a_trace:
+    42
 
 
 ## Scan Operations

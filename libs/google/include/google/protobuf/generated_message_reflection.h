@@ -45,7 +45,6 @@
 // TODO(jasonh): Remove this once the compiler change to directly include this
 // is released to components.
 #include <google/protobuf/generated_enum_reflection.h>
-#include <google/protobuf/generated_message_util.h>
 #include <google/protobuf/message.h>
 #include <google/protobuf/metadata.h>
 #include <google/protobuf/unknown_field_set.h>
@@ -95,7 +94,7 @@ class WeakFieldMap;             // weak_field_map.h
 //                  For each oneof or weak field, the offset is relative to the
 //                  default_instance. These can be computed at compile time
 //                  using the
-//                  GOOGLE_PROTOBUF_GENERATED_DEFAULT_ONEOF_FIELD_OFFSET()
+//                  PROTO2_GENERATED_DEFAULT_ONEOF_FIELD_OFFSET()
 //                  macro. For each none oneof field, the offset is related to
 //                  the start of the message object.  These can be computed at
 //                  compile time using the
@@ -129,28 +128,42 @@ class WeakFieldMap;             // weak_field_map.h
 struct ReflectionSchema {
  public:
   // Size of a google::protobuf::Message object of this type.
-  uint32 GetObjectSize() const { return object_size_; }
+  uint32 GetObjectSize() const { return static_cast<uint32>(object_size_); }
 
   // Offset of a non-oneof field.  Getting a field offset is slightly more
   // efficient when we know statically that it is not a oneof field.
   uint32 GetFieldOffsetNonOneof(const FieldDescriptor* field) const {
     GOOGLE_DCHECK(!field->containing_oneof());
-    return offsets_[field->index()];
+    return OffsetValue(offsets_[field->index()], field->type());
   }
 
   // Offset of any field.
   uint32 GetFieldOffset(const FieldDescriptor* field) const {
     if (field->containing_oneof()) {
-      size_t offset = field->containing_type()->field_count() +
-                      field->containing_oneof()->index();
-      return offsets_[offset];
+      size_t offset =
+          static_cast<size_t>(field->containing_type()->field_count() +
+          field->containing_oneof()->index());
+      return OffsetValue(offsets_[offset], field->type());
     } else {
       return GetFieldOffsetNonOneof(field);
     }
   }
 
+  bool IsFieldInlined(const FieldDescriptor* field) const {
+    if (field->containing_oneof()) {
+      size_t offset =
+          static_cast<size_t>(field->containing_type()->field_count() +
+                              field->containing_oneof()->index());
+      return Inlined(offsets_[offset], field->type());
+    } else {
+      return Inlined(offsets_[field->index()], field->type());
+    }
+  }
+
   uint32 GetOneofCaseOffset(const OneofDescriptor* oneof_descriptor) const {
-    return oneof_case_offset_ + (oneof_descriptor->index() * sizeof(uint32));
+    return static_cast<uint32>(oneof_case_offset_) +
+           static_cast<uint32>(
+               static_cast<size_t>(oneof_descriptor->index()) * sizeof(uint32));
   }
 
   bool HasHasbits() const { return has_bits_offset_ != -1; }
@@ -164,7 +177,7 @@ struct ReflectionSchema {
   // Byte offset of the hasbits array.
   uint32 HasBitsOffset() const {
     GOOGLE_DCHECK(HasHasbits());
-    return has_bits_offset_;
+    return static_cast<uint32>(has_bits_offset_);
   }
 
   // The offset of the InternalMetadataWithArena member.
@@ -172,7 +185,7 @@ struct ReflectionSchema {
   // The schema doesn't contain enough information to distinguish between
   // these two cases.
   uint32 GetMetadataOffset() const {
-    return metadata_offset_;
+    return static_cast<uint32>(metadata_offset_);
   }
 
   // Whether this message has an ExtensionSet.
@@ -181,7 +194,7 @@ struct ReflectionSchema {
   // The offset of the ExtensionSet in this message.
   uint32 GetExtensionSetOffset() const {
     GOOGLE_DCHECK(HasExtensionSet());
-    return extensions_offset_;
+    return static_cast<uint32>(extensions_offset_);
   }
 
   // The off set of WeakFieldMap when the message contains weak fields.
@@ -196,7 +209,7 @@ struct ReflectionSchema {
   // of the underlying data depends on the field's type.
   const void *GetFieldDefault(const FieldDescriptor* field) const {
     return reinterpret_cast<const uint8*>(default_instance_) +
-                     offsets_[field->index()];
+           OffsetValue(offsets_[field->index()], field->type());
   }
 
 
@@ -217,6 +230,27 @@ struct ReflectionSchema {
   int oneof_case_offset_;
   int object_size_;
   int weak_field_map_offset_;
+
+  // We tag offset values to provide additional data about fields (such as
+  // inlined).
+  static uint32 OffsetValue(uint32 v, FieldDescriptor::Type type) {
+    if (type == FieldDescriptor::TYPE_STRING ||
+        type == FieldDescriptor::TYPE_BYTES) {
+      return v & ~1u;
+    } else {
+      return v;
+    }
+  }
+
+  static bool Inlined(uint32 v, FieldDescriptor::Type type) {
+    if (type == FieldDescriptor::TYPE_STRING ||
+        type == FieldDescriptor::TYPE_BYTES) {
+      return v & 1u;
+    } else {
+      // Non string/byte fields are not inlined.
+      return false;
+    }
+  }
 };
 
 // Structs that the code generator emits directly to describe a message.
@@ -255,7 +289,7 @@ struct MigrationSchema {
 //    of whatever type the individual field would be.  Strings and
 //    Messages use RepeatedPtrFields while everything else uses
 //    RepeatedFields.
-class LIBPROTOBUF_EXPORT GeneratedMessageReflection PROTOBUF_FINAL : public Reflection {
+class GeneratedMessageReflection final : public Reflection {
  public:
   // Constructs a GeneratedMessageReflection.
   // Parameters:
@@ -541,6 +575,8 @@ class LIBPROTOBUF_EXPORT GeneratedMessageReflection PROTOBUF_FINAL : public Refl
   inline InternalMetadataWithArena*
       MutableInternalMetadataWithArena(Message* message) const;
 
+  inline bool IsInlined(const FieldDescriptor* field) const;
+
   inline bool HasBit(const Message& message,
                      const FieldDescriptor* field) const;
   inline void SetBit(Message* message,
@@ -653,12 +689,9 @@ class LIBPROTOBUF_EXPORT GeneratedMessageReflection PROTOBUF_FINAL : public Refl
 // dynamic_cast_if_available() implements this logic.  If RTTI is
 // enabled, it does a dynamic_cast.  If RTTI is disabled, it just returns
 // NULL.
-//
-// If you need to compile without RTTI, simply #define GOOGLE_PROTOBUF_NO_RTTI.
-// On MSVC, this should be detected automatically.
 template<typename To, typename From>
 inline To dynamic_cast_if_available(From from) {
-#if defined(GOOGLE_PROTOBUF_NO_RTTI) || (defined(_MSC_VER)&&!defined(_CPPRTTI))
+#ifdef GOOGLE_PROTOBUF_NO_RTTI
   // Avoid the compiler warning about unused variables.
   (void)from;
   return NULL;
@@ -686,8 +719,7 @@ T* DynamicCastToGenerated(const Message* from) {
   const Message* unused = static_cast<T*>(NULL);
   (void)unused;
 
-#if defined(GOOGLE_PROTOBUF_NO_RTTI) || \
-  (defined(_MSC_VER) && !defined(_CPPRTTI))
+#ifdef GOOGLE_PROTOBUF_NO_RTTI
   bool ok = &T::default_instance() ==
             from->GetReflection()->GetMessageFactory()->GetPrototype(
                 from->GetDescriptor());
@@ -706,13 +738,17 @@ T* DynamicCastToGenerated(Message* from) {
 LIBPROTOBUF_EXPORT void AssignDescriptors(
     const string& filename, const MigrationSchema* schemas,
     const Message* const* default_instances_, const uint32* offsets,
-    MessageFactory* factory,
     // update the following descriptor arrays.
     Metadata* file_level_metadata,
     const EnumDescriptor** file_level_enum_descriptors,
     const ServiceDescriptor** file_level_service_descriptors);
 
 LIBPROTOBUF_EXPORT void RegisterAllTypes(const Metadata* file_level_metadata, int size);
+
+// These cannot be in lite so we put them in the reflection.
+LIBPROTOBUF_EXPORT void UnknownFieldSetSerializer(const uint8* base, uint32 offset, uint32 tag,
+                               uint32 has_offset,
+                               ::google::protobuf::io::CodedOutputStream* output);
 
 }  // namespace internal
 }  // namespace protobuf

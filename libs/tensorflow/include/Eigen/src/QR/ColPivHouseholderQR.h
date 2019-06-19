@@ -402,7 +402,7 @@ template<typename _MatrixType> class ColPivHouseholderQR
       */
     RealScalar maxPivot() const { return m_maxpivot; }
 
-    /** \brief Reports whether the QR factorization was succesful.
+    /** \brief Reports whether the QR factorization was successful.
       *
       * \note This function always returns \c Success. It is provided for compatibility
       * with other factorization routines.
@@ -552,10 +552,10 @@ void ColPivHouseholderQR<MatrixType>::computeInPlace()
       // http://www.netlib.org/lapack/lawnspdf/lawn176.pdf
       // and used in LAPACK routines xGEQPF and xGEQP3.
       // See lines 278-297 in http://www.netlib.org/lapack/explore-html/dc/df4/sgeqpf_8f_source.html
-      if (m_colNormsUpdated.coeffRef(j) != 0) {
+      if (m_colNormsUpdated.coeffRef(j) != RealScalar(0)) {
         RealScalar temp = abs(m_qr.coeffRef(k, j)) / m_colNormsUpdated.coeffRef(j);
         temp = (RealScalar(1) + temp) * (RealScalar(1) - temp);
-        temp = temp < 0 ? 0 : temp;
+        temp = temp <  RealScalar(0) ? RealScalar(0) : temp;
         RealScalar temp2 = temp * numext::abs2<RealScalar>(m_colNormsUpdated.coeffRef(j) /
                                                            m_colNormsDirect.coeffRef(j));
         if (temp2 <= norm_downdate_threshold) {
@@ -595,11 +595,7 @@ void ColPivHouseholderQR<_MatrixType>::_solve_impl(const RhsType &rhs, DstType &
 
   typename RhsType::PlainObject c(rhs);
 
-  // Note that the matrix Q = H_0^* H_1^*... so its inverse is Q^* = (H_0 H_1 ...)^T
-  c.applyOnTheLeft(householderSequence(m_qr, m_hCoeffs)
-                    .setLength(nonzero_pivots)
-                    .transpose()
-    );
+  c.applyOnTheLeft(householderQ().setLength(nonzero_pivots).adjoint() );
 
   m_qr.topLeftCorner(nonzero_pivots, nonzero_pivots)
       .template triangularView<Upper>()

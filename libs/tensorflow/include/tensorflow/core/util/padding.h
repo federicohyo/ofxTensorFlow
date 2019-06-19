@@ -13,15 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_PADDING_H_
-#define TENSORFLOW_UTIL_PADDING_H_
+#ifndef TENSORFLOW_CORE_UTIL_PADDING_H_
+#define TENSORFLOW_CORE_UTIL_PADDING_H_
 
 // This file contains helper routines to deal with padding in various ops and
 // kernels.
 
 #include <string>
 
-#include "tensorflow/core/framework/graph.pb.h"  // TODO(b/62899350): Remove
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -51,4 +50,4 @@ Status GetNodeAttr(const NodeDef& node_def, StringPiece attr_name,
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_PADDING_H_
+#endif  // TENSORFLOW_CORE_UTIL_PADDING_H_

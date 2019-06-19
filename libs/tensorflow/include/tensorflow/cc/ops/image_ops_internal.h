@@ -21,6 +21,55 @@ namespace internal {
 /// @defgroup image_ops_internal Image Ops Internal
 /// @{
 
+/// Computes the gradient of bicubic interpolation.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * grads: 4-D with shape `[batch, height, width, channels]`.
+/// * original_image: 4-D with shape `[batch, orig_height, orig_width, channels]`,
+/// The image tensor that was resized.
+///
+/// Optional attributes (see `Attrs`):
+/// * align_corners: If true, the centers of the 4 corner pixels of the input and grad tensors are
+/// aligned. Defaults to false.
+///
+/// Returns:
+/// * `Output`: 4-D with shape `[batch, orig_height, orig_width, channels]`.
+/// Gradients with respect to the input image. Input image must have been
+/// float or double.
+class ResizeBicubicGrad {
+ public:
+  /// Optional attribute setters for ResizeBicubicGrad
+  struct Attrs {
+    /// If true, the centers of the 4 corner pixels of the input and grad tensors are
+    /// aligned. Defaults to false.
+    ///
+    /// Defaults to false
+    TF_MUST_USE_RESULT Attrs AlignCorners(bool x) {
+      Attrs ret = *this;
+      ret.align_corners_ = x;
+      return ret;
+    }
+
+    bool align_corners_ = false;
+  };
+  ResizeBicubicGrad(const ::tensorflow::Scope& scope, ::tensorflow::Input grads,
+                  ::tensorflow::Input original_image);
+  ResizeBicubicGrad(const ::tensorflow::Scope& scope, ::tensorflow::Input grads,
+                  ::tensorflow::Input original_image, const
+                  ResizeBicubicGrad::Attrs& attrs);
+  operator ::tensorflow::Output() const { return output; }
+  operator ::tensorflow::Input() const { return output; }
+  ::tensorflow::Node* node() const { return output.node(); }
+
+  static Attrs AlignCorners(bool x) {
+    return Attrs().AlignCorners(x);
+  }
+
+  Operation operation;
+  ::tensorflow::Output output;
+};
+
 /// Computes the gradient of bilinear interpolation.
 ///
 /// Arguments:
@@ -30,9 +79,8 @@ namespace internal {
 /// The image tensor that was resized.
 ///
 /// Optional attributes (see `Attrs`):
-/// * align_corners: If true, rescale grads by (orig_height - 1) / (height - 1), which
-/// exactly aligns the 4 corners of grads and original_image. If false, rescale by
-/// orig_height / height. Treat similarly the width dimension.
+/// * align_corners: If true, the centers of the 4 corner pixels of the input and grad tensors are
+/// aligned. Defaults to false.
 ///
 /// Returns:
 /// * `Output`: 4-D with shape `[batch, orig_height, orig_width, channels]`.
@@ -42,12 +90,11 @@ class ResizeBilinearGrad {
  public:
   /// Optional attribute setters for ResizeBilinearGrad
   struct Attrs {
-    /// If true, rescale grads by (orig_height - 1) / (height - 1), which
-    /// exactly aligns the 4 corners of grads and original_image. If false, rescale by
-    /// orig_height / height. Treat similarly the width dimension.
+    /// If true, the centers of the 4 corner pixels of the input and grad tensors are
+    /// aligned. Defaults to false.
     ///
     /// Defaults to false
-    Attrs AlignCorners(bool x) {
+    TF_MUST_USE_RESULT Attrs AlignCorners(bool x) {
       Attrs ret = *this;
       ret.align_corners_ = x;
       return ret;
@@ -68,6 +115,7 @@ class ResizeBilinearGrad {
     return Attrs().AlignCorners(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -80,9 +128,8 @@ class ResizeBilinearGrad {
 /// original input size.
 ///
 /// Optional attributes (see `Attrs`):
-/// * align_corners: If true, rescale grads by (orig_height - 1) / (height - 1), which
-/// exactly aligns the 4 corners of grads and original_image. If false, rescale by
-/// orig_height / height. Treat similarly the width dimension.
+/// * align_corners: If true, the centers of the 4 corner pixels of the input and grad tensors are
+/// aligned. Defaults to false.
 ///
 /// Returns:
 /// * `Output`: 4-D with shape `[batch, orig_height, orig_width, channels]`. Gradients
@@ -91,12 +138,11 @@ class ResizeNearestNeighborGrad {
  public:
   /// Optional attribute setters for ResizeNearestNeighborGrad
   struct Attrs {
-    /// If true, rescale grads by (orig_height - 1) / (height - 1), which
-    /// exactly aligns the 4 corners of grads and original_image. If false, rescale by
-    /// orig_height / height. Treat similarly the width dimension.
+    /// If true, the centers of the 4 corner pixels of the input and grad tensors are
+    /// aligned. Defaults to false.
     ///
     /// Defaults to false
-    Attrs AlignCorners(bool x) {
+    TF_MUST_USE_RESULT Attrs AlignCorners(bool x) {
       Attrs ret = *this;
       ret.align_corners_ = x;
       return ret;
@@ -117,6 +163,7 @@ class ResizeNearestNeighborGrad {
     return Attrs().AlignCorners(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 

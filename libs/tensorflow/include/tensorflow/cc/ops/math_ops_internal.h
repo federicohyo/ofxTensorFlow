@@ -21,6 +21,47 @@ namespace internal {
 /// @defgroup math_ops_internal Math Ops Internal
 /// @{
 
+/// Computes the gradient of `igamma(a, x)` wrt `a`.
+///
+/// Arguments:
+/// * scope: A Scope object
+///
+/// Returns:
+/// * `Output`: The z tensor.
+class IgammaGradA {
+ public:
+  IgammaGradA(const ::tensorflow::Scope& scope, ::tensorflow::Input a,
+            ::tensorflow::Input x);
+  operator ::tensorflow::Output() const { return z; }
+  operator ::tensorflow::Input() const { return z; }
+  ::tensorflow::Node* node() const { return z.node(); }
+
+  Operation operation;
+  ::tensorflow::Output z;
+};
+
+/// Computes the gradient for the inverse of `x` wrt its input.
+///
+/// Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`
+/// is the corresponding input gradient.
+///
+/// Arguments:
+/// * scope: A Scope object
+///
+/// Returns:
+/// * `Output`: The z tensor.
+class InvGrad {
+ public:
+  InvGrad(const ::tensorflow::Scope& scope, ::tensorflow::Input y,
+        ::tensorflow::Input dy);
+  operator ::tensorflow::Output() const { return z; }
+  operator ::tensorflow::Input() const { return z; }
+  ::tensorflow::Node* node() const { return z.node(); }
+
+  Operation operation;
+  ::tensorflow::Output z;
+};
+
 /// Computes the gradient for the inverse of `x` wrt its input.
 ///
 /// Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`
@@ -33,12 +74,13 @@ namespace internal {
 /// * `Output`: The z tensor.
 class ReciprocalGrad {
  public:
-  ReciprocalGrad(const ::tensorflow::Scope& scope, ::tensorflow::Input x,
-               ::tensorflow::Input y);
+  ReciprocalGrad(const ::tensorflow::Scope& scope, ::tensorflow::Input y,
+               ::tensorflow::Input dy);
   operator ::tensorflow::Output() const { return z; }
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -54,12 +96,13 @@ class ReciprocalGrad {
 /// * `Output`: The z tensor.
 class RsqrtGrad {
  public:
-  RsqrtGrad(const ::tensorflow::Scope& scope, ::tensorflow::Input x,
-          ::tensorflow::Input y);
+  RsqrtGrad(const ::tensorflow::Scope& scope, ::tensorflow::Input y,
+          ::tensorflow::Input dy);
   operator ::tensorflow::Output() const { return z; }
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -75,12 +118,13 @@ class RsqrtGrad {
 /// * `Output`: The z tensor.
 class SigmoidGrad {
  public:
-  SigmoidGrad(const ::tensorflow::Scope& scope, ::tensorflow::Input x,
-            ::tensorflow::Input y);
+  SigmoidGrad(const ::tensorflow::Scope& scope, ::tensorflow::Input y,
+            ::tensorflow::Input dy);
   operator ::tensorflow::Output() const { return z; }
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -96,12 +140,13 @@ class SigmoidGrad {
 /// * `Output`: The z tensor.
 class SqrtGrad {
  public:
-  SqrtGrad(const ::tensorflow::Scope& scope, ::tensorflow::Input x,
-         ::tensorflow::Input y);
+  SqrtGrad(const ::tensorflow::Scope& scope, ::tensorflow::Input y,
+         ::tensorflow::Input dy);
   operator ::tensorflow::Output() const { return z; }
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -117,12 +162,13 @@ class SqrtGrad {
 /// * `Output`: The z tensor.
 class TanhGrad {
  public:
-  TanhGrad(const ::tensorflow::Scope& scope, ::tensorflow::Input x,
-         ::tensorflow::Input y);
+  TanhGrad(const ::tensorflow::Scope& scope, ::tensorflow::Input y,
+         ::tensorflow::Input dy);
   operator ::tensorflow::Output() const { return z; }
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 

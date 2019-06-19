@@ -14,7 +14,23 @@
 
 #if defined(EIGEN_USE_SYCL) && !defined(EIGEN_CXX11_TENSOR_TENSOR_DEVICE_SYCL_H)
 #define EIGEN_CXX11_TENSOR_TENSOR_DEVICE_SYCL_H
+template<size_t Align> struct CheckAlignStatically {
+  static const bool Val= (((Align&(Align-1))==0) && (Align >= sizeof(void *)));
+};
+template <bool IsAligned, size_t Align>
+struct Conditional_Allocate {
 
+  EIGEN_ALWAYS_INLINE static void* conditional_allocate(std::size_t elements) {
+    return aligned_alloc(Align, elements);
+  }
+};
+template <size_t Align>
+struct Conditional_Allocate<false, Align> {
+
+  EIGEN_ALWAYS_INLINE static void* conditional_allocate(std::size_t elements){
+    return malloc(elements);
+  }
+};
 template <typename Scalar, size_t Align = EIGEN_MAX_ALIGN_BYTES, class Allocator = std::allocator<Scalar>>
 struct SyclAllocator {
   typedef Scalar value_type;
@@ -22,14 +38,16 @@ struct SyclAllocator {
   typedef typename std::allocator_traits<Allocator>::size_type size_type;
 
   SyclAllocator( ){};
-  Scalar* allocate(std::size_t elements) { return static_cast<Scalar*>(aligned_alloc(Align, elements)); }
+  Scalar* allocate(std::size_t elements) {
+    return static_cast<Scalar*>(Conditional_Allocate<CheckAlignStatically<Align>::Val, Align>::conditional_allocate(elements));
+  }
   void deallocate(Scalar * p, std::size_t size) { EIGEN_UNUSED_VARIABLE(size); free(p); }
 };
 
 namespace Eigen {
 
-  #define ConvertToActualTypeSycl(Scalar, buf_acc) reinterpret_cast<typename cl::sycl::global_ptr<Scalar>::pointer_t>((&(*buf_acc.get_pointer())))
-  #define ConvertToActualSyclOffset(Scalar, offset) offset/sizeof(Scalar)
+#define ConvertToActualTypeSycl(Scalar, buf_acc) static_cast<Scalar*>(static_cast<void*>(((buf_acc.get_pointer().get()))))
+#define ConvertToActualSyclOffset(Scalar, offset) offset/sizeof(Scalar)
 
 
   template <typename Scalar, typename read_accessor, typename write_accessor> class MemCopyFunctor {
@@ -81,28 +99,26 @@ struct memsetCghFunctor{
   }
 };
 
-  //get_devices returns all the available opencl devices. Either use device_selector or exclude devices that computecpp does not support (AMD OpenCL for CPU  and intel GPU)
+//get_devices returns all the available opencl devices. Either use device_selector or exclude devices that computecpp does not support (AMD OpenCL for CPU  and intel GPU)
 EIGEN_STRONG_INLINE auto get_sycl_supported_devices()->decltype(cl::sycl::device::get_devices()){
-  auto devices = cl::sycl::device::get_devices();
-  std::vector<cl::sycl::device>::iterator it =devices.begin();
-  while(it!=devices.end()) {
-    ///FIXME: Currently there is a bug in amd cpu OpenCL
-    auto name = (*it).template get_info<cl::sycl::info::device::name>();
-    std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-    auto vendor = (*it).template get_info<cl::sycl::info::device::vendor>();
+std::vector<cl::sycl::device> supported_devices;
+auto plafrom_list =cl::sycl::platform::get_platforms();
+for(const auto& platform : plafrom_list){
+  auto device_list = platform.get_devices();
+  auto platform_name =platform.template get_info<cl::sycl::info::platform::name>();
+  std::transform(platform_name.begin(), platform_name.end(), platform_name.begin(), ::tolower);
+  for(const auto& device : device_list){
+    auto vendor = device.template get_info<cl::sycl::info::device::vendor>();
     std::transform(vendor.begin(), vendor.end(), vendor.begin(), ::tolower);
-
-    if((*it).is_cpu() && vendor.find("amd")!=std::string::npos && vendor.find("apu") == std::string::npos){ // remove amd cpu as it is not supported by computecpp allow APUs
-      it = devices.erase(it);
-      //FIXME: currently there is a bug in intel gpu driver regarding memory allignment issue.
-    }else if((*it).is_gpu() && name.find("intel")!=std::string::npos){
-      it = devices.erase(it);
-    }
-    else{
-      ++it;
+    bool unsuported_condition = (device.is_cpu() && platform_name.find("amd")!=std::string::npos && vendor.find("apu") == std::string::npos) ||
+    (device.is_gpu() && platform_name.find("intel")!=std::string::npos);
+    if(!unsuported_condition){
+      std::cout << "Platform name "<< platform_name << std::endl;
+        supported_devices.push_back(device);
     }
   }
-  return devices;
+}
+return supported_devices;
 }
 
 class QueueInterface {
@@ -270,7 +286,7 @@ m_queue(cl::sycl::queue(s, [&](cl::sycl::exception_list l) {
     tileSize =static_cast<Index>(m_queue.get_device(). template get_info<cl::sycl::info::device::max_work_group_size>());
     auto s=  m_queue.get_device().template get_info<cl::sycl::info::device::vendor>();
     std::transform(s.begin(), s.end(), s.begin(), ::tolower);
-    if(m_queue.get_device().is_cpu()){ // intel doesnot allow to use max workgroup size
+    if(m_queue.get_device().is_cpu()){ // intel doesn't allow to use max workgroup size
       tileSize=std::min(static_cast<Index>(256), static_cast<Index>(tileSize));
     }
     rng = n;
@@ -287,7 +303,7 @@ m_queue(cl::sycl::queue(s, [&](cl::sycl::exception_list l) {
   template<typename Index>
   EIGEN_STRONG_INLINE void parallel_for_setup(Index dim0, Index dim1, Index &tileSize0, Index &tileSize1, Index &rng0, Index &rng1, Index &GRange0, Index &GRange1)  const {
     Index max_workgroup_Size = static_cast<Index>(maxSyclThreadsPerBlock());
-    if(m_queue.get_device().is_cpu()){ // intel doesnot allow to use max workgroup size
+    if(m_queue.get_device().is_cpu()){ // intel doesn't allow to use max workgroup size
       max_workgroup_Size=std::min(static_cast<Index>(256), static_cast<Index>(max_workgroup_Size));
     }
     Index pow_of_2 = static_cast<Index>(std::log2(max_workgroup_Size));
@@ -315,7 +331,7 @@ m_queue(cl::sycl::queue(s, [&](cl::sycl::exception_list l) {
   template<typename Index>
   EIGEN_STRONG_INLINE void parallel_for_setup(Index dim0, Index dim1,Index dim2, Index &tileSize0, Index &tileSize1, Index &tileSize2, Index &rng0, Index &rng1, Index &rng2, Index &GRange0, Index &GRange1, Index &GRange2)  const {
     Index max_workgroup_Size = static_cast<Index>(maxSyclThreadsPerBlock());
-    if(m_queue.get_device().is_cpu()){ // intel doesnot allow to use max workgroup size
+    if(m_queue.get_device().is_cpu()){ // intel doesn't allow to use max workgroup size
       max_workgroup_Size=std::min(static_cast<Index>(256), static_cast<Index>(max_workgroup_Size));
     }
     Index pow_of_2 = static_cast<Index>(std::log2(max_workgroup_Size));
@@ -361,7 +377,7 @@ m_queue(cl::sycl::queue(s, [&](cl::sycl::exception_list l) {
   EIGEN_STRONG_INLINE int majorDeviceVersion() const { return 1; }
 
   EIGEN_STRONG_INLINE unsigned long maxSyclThreadsPerMultiProcessor() const {
-    // OpenCL doesnot have such concept
+    // OpenCL doesn't have such concept
     return 2;
   }
 
@@ -503,7 +519,7 @@ struct SyclDevice {
     return m_queue_stream->maxSyclThreadsPerBlock();
   }
   EIGEN_STRONG_INLINE unsigned long maxSyclThreadsPerMultiProcessor() const {
-    // OpenCL doesnot have such concept
+    // OpenCL doesn't have such concept
     return m_queue_stream->maxSyclThreadsPerMultiProcessor();
   //  return stream_->deviceProperties().maxThreadsPerMultiProcessor;
   }
@@ -528,7 +544,7 @@ struct SyclDevice {
 };
 // This is used as a distingushable device inside the kernel as the sycl device class is not Standard layout.
 // This is internal and must not be used by user. This dummy device allow us to specialise the tensor evaluator
-// inside the kenrel. So we can have two types of eval for host and device. This is required for TensorArgMax operation
+// inside the kernel. So we can have two types of eval for host and device. This is required for TensorArgMax operation
 struct SyclKernelDevice:DefaultDevice{};
 
 }  // end namespace Eigen

@@ -21,6 +21,25 @@ namespace internal {
 /// @defgroup random_ops_internal Random Ops Internal
 /// @{
 
+/// Computes the derivative of a Gamma random sample w.r.t. `alpha`.
+///
+/// Arguments:
+/// * scope: A Scope object
+///
+/// Returns:
+/// * `Output`: The output tensor.
+class RandomGammaGrad {
+ public:
+  RandomGammaGrad(const ::tensorflow::Scope& scope, ::tensorflow::Input alpha,
+                ::tensorflow::Input sample);
+  operator ::tensorflow::Output() const { return output; }
+  operator ::tensorflow::Input() const { return output; }
+  ::tensorflow::Node* node() const { return output.node(); }
+
+  Operation operation;
+  ::tensorflow::Output output;
+};
+
 }  // namespace internal
 }  // namespace ops
 }  // namespace tensorflow

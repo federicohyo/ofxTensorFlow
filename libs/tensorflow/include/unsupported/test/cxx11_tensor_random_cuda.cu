@@ -13,9 +13,6 @@
 #define EIGEN_DEFAULT_DENSE_INDEX_TYPE int
 #define EIGEN_USE_GPU
 
-#if defined __CUDACC_VER__ && __CUDACC_VER__ >= 70500
-#include <cuda_fp16.h>
-#endif
 #include "main.h"
 #include <Eigen/CXX11/Tensor>
 
@@ -40,7 +37,7 @@ void test_cuda_random_uniform()
   assert(cudaMemcpyAsync(out.data(), d_out, out_bytes, cudaMemcpyDeviceToHost, gpu_device.stream()) == cudaSuccess);
   assert(cudaStreamSynchronize(gpu_device.stream()) == cudaSuccess);
 
-  // For now we just check thes code doesn't crash.
+  // For now we just check this code doesn't crash.
   // TODO: come up with a valid test of randomness
 }
 

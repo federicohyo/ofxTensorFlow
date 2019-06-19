@@ -45,16 +45,21 @@
     #pragma clang diagnostic ignored "-Wabsolute-value"
   #endif
 
-#elif defined __GNUC__ && __GNUC__>=6
+#elif defined __GNUC__
 
   #ifndef EIGEN_PERMANENTLY_DISABLE_STUPID_WARNINGS
     #pragma GCC diagnostic push
   #endif
-  #pragma GCC diagnostic ignored "-Wignored-attributes"
+  // g++ warns about local variables shadowing member functions, which is too strict
+  #pragma GCC diagnostic ignored "-Wshadow"
+  #if __GNUC__>=6
+    #pragma GCC diagnostic ignored "-Wignored-attributes"
+  #endif
 
 #endif
 
 #if defined __NVCC__
+  #pragma diag_suppress boolean_controlling_expr_is_constant
   // Disable the "statement is unreachable" message
   #pragma diag_suppress code_is_unreachable
   // Disable the "dynamic initialization in unreachable code" message
@@ -72,6 +77,7 @@
   #pragma diag_suppress 2671
   #pragma diag_suppress 2735
   #pragma diag_suppress 2737
+  #pragma diag_suppress 2739
 #endif
 
 #endif // not EIGEN_WARNINGS_DISABLED

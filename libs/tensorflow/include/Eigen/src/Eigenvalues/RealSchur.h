@@ -190,7 +190,7 @@ template<typename _MatrixType> class RealSchur
     RealSchur& computeFromHessenberg(const HessMatrixType& matrixH, const OrthMatrixType& matrixQ,  bool computeU);
     /** \brief Reports whether previous computation was successful.
       *
-      * \returns \c Success if computation was succesful, \c NoConvergence otherwise.
+      * \returns \c Success if computation was successful, \c NoConvergence otherwise.
       */
     ComputationInfo info() const
     {
@@ -284,13 +284,13 @@ RealSchur<MatrixType>& RealSchur<MatrixType>::computeFromHessenberg(const HessMa
   using std::abs;
 
   m_matT = matrixH;
+  m_workspaceVector.resize(m_matT.cols());
   if(computeU)
-    m_matU = matrixQ;
+    matrixQ.evalTo(m_matU, m_workspaceVector);
   
   Index maxIters = m_maxIters;
   if (maxIters == -1)
     maxIters = m_maxIterationsPerRow * matrixH.rows();
-  m_workspaceVector.resize(m_matT.cols());
   Scalar* workspace = &m_workspaceVector.coeffRef(0);
 
   // The matrix m_matT is divided in three parts. 
@@ -303,7 +303,7 @@ RealSchur<MatrixType>& RealSchur<MatrixType>::computeFromHessenberg(const HessMa
   Scalar exshift(0);   // sum of exceptional shifts
   Scalar norm = computeNormOfT();
 
-  if(norm!=0)
+  if(norm!=Scalar(0))
   {
     while (iu >= 0)
     {
@@ -327,7 +327,7 @@ RealSchur<MatrixType>& RealSchur<MatrixType>::computeFromHessenberg(const HessMa
       else // No convergence yet
       {
         // The firstHouseholderVector vector has to be initialized to something to get rid of a silly GCC warning (-O1 -Wall -DNDEBUG )
-        Vector3s firstHouseholderVector(0,0,0), shiftInfo;
+        Vector3s firstHouseholderVector = Vector3s::Zero(), shiftInfo;
         computeShift(iu, iter, exshift, shiftInfo);
         iter = iter + 1;
         totalIter = totalIter + 1;

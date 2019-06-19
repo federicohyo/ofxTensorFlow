@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PUBLIC_SESSION_H_
-#define TENSORFLOW_PUBLIC_SESSION_H_
+#ifndef TENSORFLOW_CORE_PUBLIC_SESSION_H_
+#define TENSORFLOW_CORE_PUBLIC_SESSION_H_
 
 #include <string>
 #include <vector>
@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
+class DeviceMgr;
 
 /// \brief A Session instance lets a caller drive a TensorFlow graph
 /// computation.
@@ -177,12 +178,58 @@ class Session {
   /// *response. This API is optional. If it is unimplemented, Status will
   /// return a corresponding error message, and *response will be unmodified.
   virtual Status ListDevices(std::vector<DeviceAttributes>* response) = 0;
+
   /// \brief Closes this session.
   ///
   /// Closing a session releases the resources used by this session
   /// on the TensorFlow runtime (specified during session creation by
   /// the `SessionOptions::target` field).
   virtual Status Close() = 0;
+
+  // NOTE(ashankar): As of July 2017, this method was added to facilitate some
+  // experimentation. Reconsider/re-evaluate after September 2017.
+  //
+  // Sets `*output` to the `DeviceMgr` that owns accessible devices in the
+  // address-space of the caller.
+  virtual Status LocalDeviceManager(const DeviceMgr** output) {
+    return errors::Unimplemented(
+        "LocalDeviceManager is not supported for this session.");
+  }
+
+  /// \brief A handle to a subgraph, created with `Session::MakeCallable()`.
+  typedef int64 CallableHandle;
+
+  /// \brief Creates a `handle` for invoking the subgraph defined by
+  /// `callable_options`.
+  /// NOTE: This API is still experimental and may change.
+  virtual Status MakeCallable(const CallableOptions& callable_options,
+                              CallableHandle* out_handle) {
+    return errors::Unimplemented(
+        "MakeCallable is not supported for this session.");
+  }
+
+  /// \brief Invokes the subgraph named by `handle` with the given options and
+  /// input tensors.
+  ///
+  /// The order of tensors in `feed_tensors` must and `fetch_tensors` will
+  /// match the order of names in `CallableOptions::feed()` and
+  /// `CallableOptions::fetch()` when this subgraph was created.
+  /// NOTE: This API is still experimental and may change.
+  virtual Status RunCallable(CallableHandle handle,
+                             const std::vector<Tensor>& feed_tensors,
+                             std::vector<Tensor>* fetch_tensors,
+                             RunMetadata* run_metadata) {
+    return errors::Unimplemented(
+        "RunCallable is not supported for this session.");
+  }
+
+  /// \brief Releases resources associated with the given `handle` in this
+  /// session.
+  /// NOTE: This API is still experimental and may change.
+  virtual Status ReleaseCallable(CallableHandle handle) {
+    return errors::Unimplemented(
+        "ReleaseCallable is not supported for this session.");
+  }
 };
 
 /// \brief Create a new session with the given options.
@@ -190,7 +237,7 @@ class Session {
 /// If session creation succeeds, the new `Session` will be stored in
 /// `*out_session`, the caller will take ownership of the returned
 /// `*out_session`, and this function will return `OK()`. Otherwise, this
-/// function will return an error status.
+/// function will return an error status and set *out_session to nullptr.
 Status NewSession(const SessionOptions& options, Session** out_session);
 
 /// \brief Resets resource containers associated with a target.
@@ -232,4 +279,4 @@ Session* NewSession(const SessionOptions& options);
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_PUBLIC_SESSION_H_
+#endif  // TENSORFLOW_CORE_PUBLIC_SESSION_H_

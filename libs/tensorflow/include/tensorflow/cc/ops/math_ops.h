@@ -36,7 +36,38 @@ class Abs {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
+};
+
+/// Returns the element-wise sum of a list of tensors.
+///
+/// `tf.accumulate_n_v2` performs the same operation as `tf.add_n`, but does not
+/// wait for all of its inputs to be ready before beginning to sum. This can
+/// save memory if inputs are ready at different times, since minimum temporary
+/// storage is proportional to the output size rather than the inputs size.
+///
+/// Unlike the original `accumulate_n`, `accumulate_n_v2` is differentiable.
+///
+/// Returns a `Tensor` of same shape and type as the elements of `inputs`.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * inputs: A list of `Tensor` objects, each with same shape and type.
+/// * shape: Shape of elements of `inputs`.
+///
+/// Returns:
+/// * `Output`: The sum tensor.
+class AccumulateNV2 {
+ public:
+  AccumulateNV2(const ::tensorflow::Scope& scope, ::tensorflow::InputList inputs,
+              PartialTensorShape shape);
+  operator ::tensorflow::Output() const { return sum; }
+  operator ::tensorflow::Input() const { return sum; }
+  ::tensorflow::Node* node() const { return sum.node(); }
+
+  Operation operation;
+  ::tensorflow::Output sum;
 };
 
 /// Computes acos of x element-wise.
@@ -53,6 +84,7 @@ class Acos {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -70,6 +102,7 @@ class Acosh {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -91,6 +124,7 @@ class Add {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -109,7 +143,30 @@ class AddN {
   operator ::tensorflow::Input() const { return sum; }
   ::tensorflow::Node* node() const { return sum.node(); }
 
+  Operation operation;
   ::tensorflow::Output sum;
+};
+
+/// Returns x + y element-wise.
+///
+/// *NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
+/// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+///
+/// Arguments:
+/// * scope: A Scope object
+///
+/// Returns:
+/// * `Output`: The z tensor.
+class AddV2 {
+ public:
+  AddV2(const ::tensorflow::Scope& scope, ::tensorflow::Input x,
+      ::tensorflow::Input y);
+  operator ::tensorflow::Output() const { return z; }
+  operator ::tensorflow::Input() const { return z; }
+  ::tensorflow::Node* node() const { return z.node(); }
+
+  Operation operation;
+  ::tensorflow::Output z;
 };
 
 /// Computes the "logical and" of elements across dimensions of a tensor.
@@ -122,7 +179,8 @@ class AddN {
 /// Arguments:
 /// * scope: A Scope object
 /// * input: The tensor to reduce.
-/// * axis: The dimensions to reduce.
+/// * axis: The dimensions to reduce. Must be in the range
+/// `[-rank(input), rank(input))`.
 ///
 /// Optional attributes (see `Attrs`):
 /// * keep_dims: If true, retain reduced dimensions with length 1.
@@ -139,7 +197,7 @@ class All {
     /// If true, retain reduced dimensions with length 1.
     ///
     /// Defaults to false
-    Attrs KeepDims(bool x) {
+    TF_MUST_USE_RESULT Attrs KeepDims(bool x) {
       Attrs ret = *this;
       ret.keep_dims_ = x;
       return ret;
@@ -159,9 +217,63 @@ class All {
     return Attrs().KeepDims(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 typedef All ReduceAll;
+
+/// Returns the argument of a complex number.
+///
+/// Given a tensor `input` of complex numbers, this operation returns a tensor of
+/// type `float` that is the argument of each element in `input`. All elements in
+/// `input` must be complex numbers of the form \\(a + bj\\), where *a*
+/// is the real part and *b* is the imaginary part.
+///
+/// The argument returned by this operation is of the form \\(atan2(b, a)\\).
+///
+/// For example:
+///
+/// ```
+/// # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+/// tf.angle(input) ==> [2.0132, 1.056]
+/// ```
+///
+/// @compatibility(numpy)
+/// Equivalent to np.angle.
+/// @end_compatibility
+///
+/// Arguments:
+/// * scope: A Scope object
+///
+/// Returns:
+/// * `Output`: The output tensor.
+class Angle {
+ public:
+  /// Optional attribute setters for Angle
+  struct Attrs {
+    /// Defaults to DT_FLOAT
+    TF_MUST_USE_RESULT Attrs Tout(DataType x) {
+      Attrs ret = *this;
+      ret.Tout_ = x;
+      return ret;
+    }
+
+    DataType Tout_ = DT_FLOAT;
+  };
+  Angle(const ::tensorflow::Scope& scope, ::tensorflow::Input input);
+  Angle(const ::tensorflow::Scope& scope, ::tensorflow::Input input, const
+      Angle::Attrs& attrs);
+  operator ::tensorflow::Output() const { return output; }
+  operator ::tensorflow::Input() const { return output; }
+  ::tensorflow::Node* node() const { return output.node(); }
+
+  static Attrs Tout(DataType x) {
+    return Attrs().Tout(x);
+  }
+
+  Operation operation;
+  ::tensorflow::Output output;
+};
 
 /// Computes the "logical or" of elements across dimensions of a tensor.
 ///
@@ -173,7 +285,8 @@ typedef All ReduceAll;
 /// Arguments:
 /// * scope: A Scope object
 /// * input: The tensor to reduce.
-/// * axis: The dimensions to reduce.
+/// * axis: The dimensions to reduce. Must be in the range
+/// `[-rank(input), rank(input))`.
 ///
 /// Optional attributes (see `Attrs`):
 /// * keep_dims: If true, retain reduced dimensions with length 1.
@@ -190,7 +303,7 @@ class Any {
     /// If true, retain reduced dimensions with length 1.
     ///
     /// Defaults to false
-    Attrs KeepDims(bool x) {
+    TF_MUST_USE_RESULT Attrs KeepDims(bool x) {
       Attrs ret = *this;
       ret.keep_dims_ = x;
       return ret;
@@ -210,6 +323,7 @@ class Any {
     return Attrs().KeepDims(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 typedef Any ReduceAny;
@@ -226,7 +340,7 @@ class ApproximateEqual {
   /// Optional attribute setters for ApproximateEqual
   struct Attrs {
     /// Defaults to 1e-05
-    Attrs Tolerance(float x) {
+    TF_MUST_USE_RESULT Attrs Tolerance(float x) {
       Attrs ret = *this;
       ret.tolerance_ = x;
       return ret;
@@ -246,6 +360,7 @@ class ApproximateEqual {
     return Attrs().Tolerance(x);
   }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -255,8 +370,8 @@ class ApproximateEqual {
 ///
 /// Arguments:
 /// * scope: A Scope object
-/// * dimension: int32 or int64, 0 <= dimension < rank(input).  Describes
-/// which dimension of the input Tensor to reduce across. For vectors,
+/// * dimension: int32 or int64, must be in the range `[-rank(input), rank(input))`.
+/// Describes which dimension of the input Tensor to reduce across. For vectors,
 /// use dimension = 0.
 ///
 /// Returns:
@@ -266,7 +381,7 @@ class ArgMax {
   /// Optional attribute setters for ArgMax
   struct Attrs {
     /// Defaults to DT_INT64
-    Attrs OutputType(DataType x) {
+    TF_MUST_USE_RESULT Attrs OutputType(DataType x) {
       Attrs ret = *this;
       ret.output_type_ = x;
       return ret;
@@ -286,6 +401,7 @@ class ArgMax {
     return Attrs().OutputType(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -295,8 +411,8 @@ class ArgMax {
 ///
 /// Arguments:
 /// * scope: A Scope object
-/// * dimension: int32 or int64, 0 <= dimension < rank(input).  Describes
-/// which dimension of the input Tensor to reduce across. For vectors,
+/// * dimension: int32 or int64, must be in the range `[-rank(input), rank(input))`.
+/// Describes which dimension of the input Tensor to reduce across. For vectors,
 /// use dimension = 0.
 ///
 /// Returns:
@@ -306,7 +422,7 @@ class ArgMin {
   /// Optional attribute setters for ArgMin
   struct Attrs {
     /// Defaults to DT_INT64
-    Attrs OutputType(DataType x) {
+    TF_MUST_USE_RESULT Attrs OutputType(DataType x) {
       Attrs ret = *this;
       ret.output_type_ = x;
       return ret;
@@ -326,6 +442,7 @@ class ArgMin {
     return Attrs().OutputType(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -343,6 +460,7 @@ class Asin {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -360,6 +478,7 @@ class Asinh {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -377,6 +496,7 @@ class Atan {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -401,6 +521,7 @@ class Atan2 {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -418,6 +539,7 @@ class Atanh {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -460,7 +582,7 @@ class BatchMatMul {
     /// If `True`, adjoint the slices of `x`. Defaults to `False`.
     ///
     /// Defaults to false
-    Attrs AdjX(bool x) {
+    TF_MUST_USE_RESULT Attrs AdjX(bool x) {
       Attrs ret = *this;
       ret.adj_x_ = x;
       return ret;
@@ -469,7 +591,7 @@ class BatchMatMul {
     /// If `True`, adjoint the slices of `y`. Defaults to `False`.
     ///
     /// Defaults to false
-    Attrs AdjY(bool x) {
+    TF_MUST_USE_RESULT Attrs AdjY(bool x) {
       Attrs ret = *this;
       ret.adj_y_ = x;
       return ret;
@@ -493,7 +615,54 @@ class BatchMatMul {
     return Attrs().AdjY(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
+};
+
+/// Computes the Bessel i0e function of `x` element-wise.
+///
+/// Exponentially scaled modified Bessel function of order 0 defined as
+/// `bessel_i0e(x) = exp(-abs(x)) bessel_i0(x)`.
+///
+/// This function is faster and numerically stabler than `bessel_i0(x)`.
+///
+/// Arguments:
+/// * scope: A Scope object
+///
+/// Returns:
+/// * `Output`: The y tensor.
+class BesselI0e {
+ public:
+  BesselI0e(const ::tensorflow::Scope& scope, ::tensorflow::Input x);
+  operator ::tensorflow::Output() const { return y; }
+  operator ::tensorflow::Input() const { return y; }
+  ::tensorflow::Node* node() const { return y.node(); }
+
+  Operation operation;
+  ::tensorflow::Output y;
+};
+
+/// Computes the Bessel i1e function of `x` element-wise.
+///
+/// Exponentially scaled modified Bessel function of order 0 defined as
+/// `bessel_i1e(x) = exp(-abs(x)) bessel_i1(x)`.
+///
+/// This function is faster and numerically stabler than `bessel_i1(x)`.
+///
+/// Arguments:
+/// * scope: A Scope object
+///
+/// Returns:
+/// * `Output`: The y tensor.
+class BesselI1e {
+ public:
+  BesselI1e(const ::tensorflow::Scope& scope, ::tensorflow::Input x);
+  operator ::tensorflow::Output() const { return y; }
+  operator ::tensorflow::Input() const { return y; }
+  ::tensorflow::Node* node() const { return y.node(); }
+
+  Operation operation;
+  ::tensorflow::Output y;
 };
 
 /// Compute the regularized incomplete beta integral \\(I_x(a, b)\\).
@@ -525,6 +694,7 @@ class Betainc {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -557,6 +727,7 @@ class Bincount {
   operator ::tensorflow::Input() const { return bins; }
   ::tensorflow::Node* node() const { return bins.node(); }
 
+  Operation operation;
   ::tensorflow::Output bins;
 };
 
@@ -592,6 +763,7 @@ class Bucketize {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -604,15 +776,33 @@ class Bucketize {
 /// * `Output`: The y tensor.
 class Cast {
  public:
+  /// Optional attribute setters for Cast
+  struct Attrs {
+    /// Defaults to false
+    TF_MUST_USE_RESULT Attrs Truncate(bool x) {
+      Attrs ret = *this;
+      ret.Truncate_ = x;
+      return ret;
+    }
+
+    bool Truncate_ = false;
+  };
   Cast(const ::tensorflow::Scope& scope, ::tensorflow::Input x, DataType DstT);
+  Cast(const ::tensorflow::Scope& scope, ::tensorflow::Input x, DataType DstT,
+     const Cast::Attrs& attrs);
   operator ::tensorflow::Output() const { return y; }
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  static Attrs Truncate(bool x) {
+    return Attrs().Truncate(x);
+  }
+
+  Operation operation;
   ::tensorflow::Output y;
 };
 
-/// Returns element-wise smallest integer in not less than x.
+/// Returns element-wise smallest integer not less than x.
 ///
 /// Arguments:
 /// * scope: A Scope object
@@ -626,7 +816,83 @@ class Ceil {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
+};
+
+/// Clips tensor values to a specified min and max.
+///
+/// Given a tensor `t`, this operation returns a tensor of the same type and
+/// shape as `t` with its values clipped to `clip_value_min` and `clip_value_max`.
+/// Any values less than `clip_value_min` are set to `clip_value_min`. Any values
+/// greater than `clip_value_max` are set to `clip_value_max`.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * t: A `Tensor`.
+/// * clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
+/// as `t`. The minimum value to clip by.
+/// * clip_value_max: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
+/// as `t`. The maximum value to clip by.
+///
+/// Returns:
+/// * `Output`: A clipped `Tensor` with the same shape as input 't'.
+class ClipByValue {
+ public:
+  ClipByValue(const ::tensorflow::Scope& scope, ::tensorflow::Input t,
+            ::tensorflow::Input clip_value_min, ::tensorflow::Input
+            clip_value_max);
+  operator ::tensorflow::Output() const { return output; }
+  operator ::tensorflow::Input() const { return output; }
+  ::tensorflow::Node* node() const { return output.node(); }
+
+  Operation operation;
+  ::tensorflow::Output output;
+};
+
+/// Compare values of `input` to `threshold` and pack resulting bits into a `uint8`.
+///
+/// Each comparison returns a boolean `true` (if `input_value > threshold`)
+/// or and `false` otherwise.
+///
+/// This operation is useful for Locality-Sensitive-Hashing (LSH) and other
+/// algorithms that use hashing approximations of cosine and `L2` distances;
+/// codes can be generated from an input via:
+///
+/// ```python
+/// codebook_size = 50
+/// codebook_bits = codebook_size * 32
+/// codebook = tf.get_variable('codebook', [x.shape[-1].value, codebook_bits],
+///                            dtype=x.dtype,
+///                            initializer=tf.orthogonal_initializer())
+/// codes = compare_and_threshold(tf.matmul(x, codebook), threshold=0.)
+/// codes = tf.bitcast(codes, tf.int32)  # go from uint8 to int32
+/// # now codes has shape x.shape[:-1] + [codebook_size]
+/// ```
+///
+/// **NOTE**: Currently, the innermost dimension of the tensor must be divisible
+/// by 8.
+///
+/// Given an `input` shaped `[s0, s1, ..., s_n]`, the output is
+/// a `uint8` tensor shaped `[s0, s1, ..., s_n / 8]`.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * input: Values to compare against `threshold` and bitpack.
+/// * threshold: Threshold to compare against.
+///
+/// Returns:
+/// * `Output`: The bitpacked comparisons.
+class CompareAndBitpack {
+ public:
+  CompareAndBitpack(const ::tensorflow::Scope& scope, ::tensorflow::Input input,
+                  ::tensorflow::Input threshold);
+  operator ::tensorflow::Output() const { return output; }
+  operator ::tensorflow::Input() const { return output; }
+  ::tensorflow::Node* node() const { return output.node(); }
+
+  Operation operation;
+  ::tensorflow::Output output;
 };
 
 /// Converts two real numbers to a complex number.
@@ -656,7 +922,7 @@ class Complex {
   /// Optional attribute setters for Complex
   struct Attrs {
     /// Defaults to DT_COMPLEX64
-    Attrs Tout(DataType x) {
+    TF_MUST_USE_RESULT Attrs Tout(DataType x) {
       Attrs ret = *this;
       ret.Tout_ = x;
       return ret;
@@ -676,6 +942,7 @@ class Complex {
     return Attrs().Tout(x);
   }
 
+  Operation operation;
   ::tensorflow::Output out;
 };
 
@@ -696,7 +963,7 @@ class ComplexAbs {
   /// Optional attribute setters for ComplexAbs
   struct Attrs {
     /// Defaults to DT_FLOAT
-    Attrs Tout(DataType x) {
+    TF_MUST_USE_RESULT Attrs Tout(DataType x) {
       Attrs ret = *this;
       ret.Tout_ = x;
       return ret;
@@ -715,6 +982,7 @@ class ComplexAbs {
     return Attrs().Tout(x);
   }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -746,6 +1014,7 @@ class Conj {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -763,6 +1032,7 @@ class Cos {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -780,6 +1050,7 @@ class Cosh {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -804,6 +1075,7 @@ class Cross {
   operator ::tensorflow::Input() const { return product; }
   ::tensorflow::Node* node() const { return product.node(); }
 
+  Operation operation;
   ::tensorflow::Output product;
 };
 
@@ -840,6 +1112,15 @@ class Cross {
 ///
 /// Arguments:
 /// * scope: A Scope object
+/// * x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+/// `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
+/// `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+/// * axis: A `Tensor` of type `int32` (default: 0). Must be in the range
+/// `[-rank(x), rank(x))`.
+///
+/// Optional attributes (see `Attrs`):
+/// * exclusive: If `True`, perform exclusive cumprod.
+/// * reverse: A `bool` (default: False).
 ///
 /// Returns:
 /// * `Output`: The out tensor.
@@ -847,15 +1128,19 @@ class Cumprod {
  public:
   /// Optional attribute setters for Cumprod
   struct Attrs {
+    /// If `True`, perform exclusive cumprod.
+    ///
     /// Defaults to false
-    Attrs Exclusive(bool x) {
+    TF_MUST_USE_RESULT Attrs Exclusive(bool x) {
       Attrs ret = *this;
       ret.exclusive_ = x;
       return ret;
     }
 
+    /// A `bool` (default: False).
+    ///
     /// Defaults to false
-    Attrs Reverse(bool x) {
+    TF_MUST_USE_RESULT Attrs Reverse(bool x) {
       Attrs ret = *this;
       ret.reverse_ = x;
       return ret;
@@ -879,6 +1164,7 @@ class Cumprod {
     return Attrs().Reverse(x);
   }
 
+  Operation operation;
   ::tensorflow::Output out;
 };
 
@@ -915,6 +1201,15 @@ class Cumprod {
 ///
 /// Arguments:
 /// * scope: A Scope object
+/// * x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+/// `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
+/// `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+/// * axis: A `Tensor` of type `int32` (default: 0). Must be in the range
+/// `[-rank(x), rank(x))`.
+///
+/// Optional attributes (see `Attrs`):
+/// * exclusive: If `True`, perform exclusive cumsum.
+/// * reverse: A `bool` (default: False).
 ///
 /// Returns:
 /// * `Output`: The out tensor.
@@ -922,15 +1217,19 @@ class Cumsum {
  public:
   /// Optional attribute setters for Cumsum
   struct Attrs {
+    /// If `True`, perform exclusive cumsum.
+    ///
     /// Defaults to false
-    Attrs Exclusive(bool x) {
+    TF_MUST_USE_RESULT Attrs Exclusive(bool x) {
       Attrs ret = *this;
       ret.exclusive_ = x;
       return ret;
     }
 
+    /// A `bool` (default: False).
+    ///
     /// Defaults to false
-    Attrs Reverse(bool x) {
+    TF_MUST_USE_RESULT Attrs Reverse(bool x) {
       Attrs ret = *this;
       ret.reverse_ = x;
       return ret;
@@ -954,6 +1253,7 @@ class Cumsum {
     return Attrs().Reverse(x);
   }
 
+  Operation operation;
   ::tensorflow::Output out;
 };
 
@@ -973,6 +1273,7 @@ class Digamma {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -994,6 +1295,30 @@ class Div {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
+  ::tensorflow::Output z;
+};
+
+/// Returns 0 if the denominator is zero.
+///
+///
+/// *NOTE*: `DivNoNan` supports broadcasting. More about broadcasting
+/// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+///
+/// Arguments:
+/// * scope: A Scope object
+///
+/// Returns:
+/// * `Output`: The z tensor.
+class DivNoNan {
+ public:
+  DivNoNan(const ::tensorflow::Scope& scope, ::tensorflow::Input x,
+         ::tensorflow::Input y);
+  operator ::tensorflow::Output() const { return z; }
+  operator ::tensorflow::Input() const { return z; }
+  ::tensorflow::Node* node() const { return z.node(); }
+
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -1015,6 +1340,7 @@ class Equal {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -1032,6 +1358,7 @@ class Erf {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -1049,6 +1376,7 @@ class Erfc {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -1066,6 +1394,7 @@ class Exp {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -1085,6 +1414,7 @@ class Expm1 {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -1102,6 +1432,7 @@ class Floor {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -1123,6 +1454,7 @@ class FloorDiv {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -1147,6 +1479,7 @@ class FloorMod {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -1168,6 +1501,7 @@ class Greater {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -1189,10 +1523,71 @@ class GreaterEqual {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
-/// Compute the lower regularized incomplete Gamma function `Q(a, x)`.
+/// Return histogram of values.
+///
+/// Given the tensor `values`, this operation returns a rank 1 histogram counting
+/// the number of entries in `values` that fall into every bin.  The bins are
+/// equal width and determined by the arguments `value_range` and `nbins`.
+///
+/// ```python
+/// # Bins will be:  (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)
+/// nbins = 5
+/// value_range = [0.0, 5.0]
+/// new_values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
+///
+/// with tf.get_default_session() as sess:
+///   hist = tf.histogram_fixed_width(new_values, value_range, nbins=5)
+///   variables.global_variables_initializer().run()
+///   sess.run(hist) => [2, 1, 1, 0, 2]
+/// ```
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * values: Numeric `Tensor`.
+/// * value_range: Shape [2] `Tensor` of same `dtype` as `values`.
+/// values <= value_range[0] will be mapped to hist[0],
+/// values >= value_range[1] will be mapped to hist[-1].
+/// * nbins: Scalar `int32 Tensor`.  Number of histogram bins.
+///
+/// Returns:
+/// * `Output`: A 1-D `Tensor` holding histogram of values.
+class HistogramFixedWidth {
+ public:
+  /// Optional attribute setters for HistogramFixedWidth
+  struct Attrs {
+    /// Defaults to DT_INT32
+    TF_MUST_USE_RESULT Attrs Dtype(DataType x) {
+      Attrs ret = *this;
+      ret.dtype_ = x;
+      return ret;
+    }
+
+    DataType dtype_ = DT_INT32;
+  };
+  HistogramFixedWidth(const ::tensorflow::Scope& scope, ::tensorflow::Input
+                    values, ::tensorflow::Input value_range,
+                    ::tensorflow::Input nbins);
+  HistogramFixedWidth(const ::tensorflow::Scope& scope, ::tensorflow::Input
+                    values, ::tensorflow::Input value_range,
+                    ::tensorflow::Input nbins, const
+                    HistogramFixedWidth::Attrs& attrs);
+  operator ::tensorflow::Output() const { return out; }
+  operator ::tensorflow::Input() const { return out; }
+  ::tensorflow::Node* node() const { return out.node(); }
+
+  static Attrs Dtype(DataType x) {
+    return Attrs().Dtype(x);
+  }
+
+  Operation operation;
+  ::tensorflow::Output out;
+};
+
+/// Compute the lower regularized incomplete Gamma function `P(a, x)`.
 ///
 /// The lower regularized incomplete Gamma function is defined as:
 ///
@@ -1201,7 +1596,7 @@ class GreaterEqual {
 ///
 /// where
 ///
-/// \\(gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt\\)
+/// \\(gamma(a, x) = \\int_{0}^{x} t^{a-1} exp(-t) dt\\)
 ///
 /// is the lower incomplete Gamma function.
 ///
@@ -1221,6 +1616,7 @@ class Igamma {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -1252,6 +1648,7 @@ class Igammac {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -1279,7 +1676,7 @@ class Imag {
   /// Optional attribute setters for Imag
   struct Attrs {
     /// Defaults to DT_FLOAT
-    Attrs Tout(DataType x) {
+    TF_MUST_USE_RESULT Attrs Tout(DataType x) {
       Attrs ret = *this;
       ret.Tout_ = x;
       return ret;
@@ -1298,7 +1695,28 @@ class Imag {
     return Attrs().Tout(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
+};
+
+/// Computes the reciprocal of x element-wise.
+///
+/// I.e., \\(y = 1 / x\\).
+///
+/// Arguments:
+/// * scope: A Scope object
+///
+/// Returns:
+/// * `Output`: The y tensor.
+class Inv {
+ public:
+  Inv(const ::tensorflow::Scope& scope, ::tensorflow::Input x);
+  operator ::tensorflow::Output() const { return y; }
+  operator ::tensorflow::Input() const { return y; }
+  ::tensorflow::Node* node() const { return y.node(); }
+
+  Operation operation;
+  ::tensorflow::Output y;
 };
 
 /// Returns which elements of x are finite.
@@ -1319,6 +1737,7 @@ class IsFinite {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -1340,6 +1759,7 @@ class IsInf {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -1361,6 +1781,7 @@ class IsNan {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -1382,6 +1803,7 @@ class Less {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -1403,6 +1825,7 @@ class LessEqual {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -1420,6 +1843,7 @@ class Lgamma {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -1437,9 +1861,9 @@ class Lgamma {
 ///
 /// Arguments:
 /// * scope: A Scope object
-/// * start: First entry in the range.
-/// * stop: Last entry in the range.
-/// * num: Number of values to generate.
+/// * start: 0-D tensor. First entry in the range.
+/// * stop: 0-D tensor. Last entry in the range.
+/// * num: 0-D tensor. Number of values to generate.
 ///
 /// Returns:
 /// * `Output`: 1-D. The generated values.
@@ -1451,6 +1875,7 @@ class LinSpace {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -1470,6 +1895,7 @@ class Log {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -1489,6 +1915,7 @@ class Log1p {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -1510,6 +1937,7 @@ class LogicalAnd {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -1527,6 +1955,7 @@ class LogicalNot {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -1548,6 +1977,7 @@ class LogicalOr {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -1577,7 +2007,7 @@ class MatMul {
     /// If true, "a" is transposed before multiplication.
     ///
     /// Defaults to false
-    Attrs TransposeA(bool x) {
+    TF_MUST_USE_RESULT Attrs TransposeA(bool x) {
       Attrs ret = *this;
       ret.transpose_a_ = x;
       return ret;
@@ -1586,7 +2016,7 @@ class MatMul {
     /// If true, "b" is transposed before multiplication.
     ///
     /// Defaults to false
-    Attrs TransposeB(bool x) {
+    TF_MUST_USE_RESULT Attrs TransposeB(bool x) {
       Attrs ret = *this;
       ret.transpose_b_ = x;
       return ret;
@@ -1610,6 +2040,7 @@ class MatMul {
     return Attrs().TransposeB(x);
   }
 
+  Operation operation;
   ::tensorflow::Output product;
 };
 
@@ -1623,7 +2054,8 @@ class MatMul {
 /// Arguments:
 /// * scope: A Scope object
 /// * input: The tensor to reduce.
-/// * axis: The dimensions to reduce.
+/// * axis: The dimensions to reduce. Must be in the range
+/// `[-rank(input), rank(input))`.
 ///
 /// Optional attributes (see `Attrs`):
 /// * keep_dims: If true, retain reduced dimensions with length 1.
@@ -1640,7 +2072,7 @@ class Max {
     /// If true, retain reduced dimensions with length 1.
     ///
     /// Defaults to false
-    Attrs KeepDims(bool x) {
+    TF_MUST_USE_RESULT Attrs KeepDims(bool x) {
       Attrs ret = *this;
       ret.keep_dims_ = x;
       return ret;
@@ -1660,6 +2092,7 @@ class Max {
     return Attrs().KeepDims(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 typedef Max ReduceMax;
@@ -1682,6 +2115,7 @@ class Maximum {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -1695,7 +2129,8 @@ class Maximum {
 /// Arguments:
 /// * scope: A Scope object
 /// * input: The tensor to reduce.
-/// * axis: The dimensions to reduce.
+/// * axis: The dimensions to reduce. Must be in the range
+/// `[-rank(input), rank(input))`.
 ///
 /// Optional attributes (see `Attrs`):
 /// * keep_dims: If true, retain reduced dimensions with length 1.
@@ -1712,7 +2147,7 @@ class Mean {
     /// If true, retain reduced dimensions with length 1.
     ///
     /// Defaults to false
-    Attrs KeepDims(bool x) {
+    TF_MUST_USE_RESULT Attrs KeepDims(bool x) {
       Attrs ret = *this;
       ret.keep_dims_ = x;
       return ret;
@@ -1732,6 +2167,7 @@ class Mean {
     return Attrs().KeepDims(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 typedef Mean ReduceMean;
@@ -1746,7 +2182,8 @@ typedef Mean ReduceMean;
 /// Arguments:
 /// * scope: A Scope object
 /// * input: The tensor to reduce.
-/// * axis: The dimensions to reduce.
+/// * axis: The dimensions to reduce. Must be in the range
+/// `[-rank(input), rank(input))`.
 ///
 /// Optional attributes (see `Attrs`):
 /// * keep_dims: If true, retain reduced dimensions with length 1.
@@ -1763,7 +2200,7 @@ class Min {
     /// If true, retain reduced dimensions with length 1.
     ///
     /// Defaults to false
-    Attrs KeepDims(bool x) {
+    TF_MUST_USE_RESULT Attrs KeepDims(bool x) {
       Attrs ret = *this;
       ret.keep_dims_ = x;
       return ret;
@@ -1783,6 +2220,7 @@ class Min {
     return Attrs().KeepDims(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 typedef Min ReduceMin;
@@ -1805,13 +2243,14 @@ class Minimum {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
 /// Returns element-wise remainder of division. This emulates C semantics in that
 ///
-/// the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
-/// y + truncate_mod(x, y) = x`.
+/// the result here is consistent with a truncating divide. E.g.
+/// `tf.truncatediv(x, y) * y + truncate_mod(x, y) = x`.
 ///
 /// *NOTE*: `Mod` supports broadcasting. More about broadcasting
 /// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
@@ -1829,6 +2268,7 @@ class Mod {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -1853,6 +2293,7 @@ class Multiply {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 typedef Multiply Mul;
@@ -1876,6 +2317,7 @@ class Negate {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 typedef Negate Neg;
@@ -1898,6 +2340,7 @@ class NotEqual {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -1923,6 +2366,7 @@ class Polygamma {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -1950,6 +2394,7 @@ class Pow {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -1963,7 +2408,8 @@ class Pow {
 /// Arguments:
 /// * scope: A Scope object
 /// * input: The tensor to reduce.
-/// * axis: The dimensions to reduce.
+/// * axis: The dimensions to reduce. Must be in the range
+/// `[-rank(input), rank(input))`.
 ///
 /// Optional attributes (see `Attrs`):
 /// * keep_dims: If true, retain reduced dimensions with length 1.
@@ -1980,7 +2426,7 @@ class Prod {
     /// If true, retain reduced dimensions with length 1.
     ///
     /// Defaults to false
-    Attrs KeepDims(bool x) {
+    TF_MUST_USE_RESULT Attrs KeepDims(bool x) {
       Attrs ret = *this;
       ret.keep_dims_ = x;
       return ret;
@@ -2000,6 +2446,7 @@ class Prod {
     return Attrs().KeepDims(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 typedef Prod ReduceProd;
@@ -2046,6 +2493,7 @@ class QuantizeDownAndShrinkRange {
                            input_min, ::tensorflow::Input input_max, DataType
                            out_type);
 
+  Operation operation;
   ::tensorflow::Output output;
   ::tensorflow::Output output_min;
   ::tensorflow::Output output_max;
@@ -2072,7 +2520,7 @@ class QuantizedAdd {
   /// Optional attribute setters for QuantizedAdd
   struct Attrs {
     /// Defaults to DT_QINT32
-    Attrs Toutput(DataType x) {
+    TF_MUST_USE_RESULT Attrs Toutput(DataType x) {
       Attrs ret = *this;
       ret.Toutput_ = x;
       return ret;
@@ -2093,6 +2541,7 @@ class QuantizedAdd {
     return Attrs().Toutput(x);
   }
 
+  Operation operation;
   ::tensorflow::Output z;
   ::tensorflow::Output min_z;
   ::tensorflow::Output max_z;
@@ -2129,7 +2578,7 @@ class QuantizedMatMul {
   /// Optional attribute setters for QuantizedMatMul
   struct Attrs {
     /// Defaults to DT_QINT32
-    Attrs Toutput(DataType x) {
+    TF_MUST_USE_RESULT Attrs Toutput(DataType x) {
       Attrs ret = *this;
       ret.Toutput_ = x;
       return ret;
@@ -2138,7 +2587,7 @@ class QuantizedMatMul {
     /// If true, `a` is transposed before multiplication.
     ///
     /// Defaults to false
-    Attrs TransposeA(bool x) {
+    TF_MUST_USE_RESULT Attrs TransposeA(bool x) {
       Attrs ret = *this;
       ret.transpose_a_ = x;
       return ret;
@@ -2147,7 +2596,7 @@ class QuantizedMatMul {
     /// If true, `b` is transposed before multiplication.
     ///
     /// Defaults to false
-    Attrs TransposeB(bool x) {
+    TF_MUST_USE_RESULT Attrs TransposeB(bool x) {
       Attrs ret = *this;
       ret.transpose_b_ = x;
       return ret;
@@ -2157,7 +2606,7 @@ class QuantizedMatMul {
     /// following this operation.
     ///
     /// Defaults to DT_QUINT8
-    Attrs Tactivation(DataType x) {
+    TF_MUST_USE_RESULT Attrs Tactivation(DataType x) {
       Attrs ret = *this;
       ret.Tactivation_ = x;
       return ret;
@@ -2190,6 +2639,7 @@ class QuantizedMatMul {
     return Attrs().Tactivation(x);
   }
 
+  Operation operation;
   ::tensorflow::Output out;
   ::tensorflow::Output min_out;
   ::tensorflow::Output max_out;
@@ -2216,7 +2666,7 @@ class QuantizedMul {
   /// Optional attribute setters for QuantizedMul
   struct Attrs {
     /// Defaults to DT_QINT32
-    Attrs Toutput(DataType x) {
+    TF_MUST_USE_RESULT Attrs Toutput(DataType x) {
       Attrs ret = *this;
       ret.Toutput_ = x;
       return ret;
@@ -2237,6 +2687,7 @@ class QuantizedMul {
     return Attrs().Toutput(x);
   }
 
+  Operation operation;
   ::tensorflow::Output z;
   ::tensorflow::Output min_z;
   ::tensorflow::Output max_z;
@@ -2272,6 +2723,7 @@ class Range {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -2299,7 +2751,7 @@ class Real {
   /// Optional attribute setters for Real
   struct Attrs {
     /// Defaults to DT_FLOAT
-    Attrs Tout(DataType x) {
+    TF_MUST_USE_RESULT Attrs Tout(DataType x) {
       Attrs ret = *this;
       ret.Tout_ = x;
       return ret;
@@ -2318,6 +2770,7 @@ class Real {
     return Attrs().Tout(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -2341,6 +2794,7 @@ class RealDiv {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -2360,6 +2814,7 @@ class Reciprocal {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -2383,6 +2838,7 @@ class RequantizationRange {
                     input, ::tensorflow::Input input_min, ::tensorflow::Input
                     input_max);
 
+  Operation operation;
   ::tensorflow::Output output_min;
   ::tensorflow::Output output_max;
 };
@@ -2415,6 +2871,7 @@ class Requantize {
            ::tensorflow::Input requested_output_min, ::tensorflow::Input
            requested_output_max, DataType out_type);
 
+  Operation operation;
   ::tensorflow::Output output;
   ::tensorflow::Output output_min;
   ::tensorflow::Output output_max;
@@ -2444,6 +2901,7 @@ class Rint {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -2464,6 +2922,7 @@ class Round {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -2483,13 +2942,15 @@ class Rsqrt {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
 /// Computes the maximum along segments of a tensor.
 ///
-/// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
-/// segments.
+/// Read
+/// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+/// for an explanation of segments.
 ///
 /// Computes a tensor such that
 /// \\(output_i = \max_j(data_j)\\) where `max` is over `j` such
@@ -2503,7 +2964,7 @@ class Rsqrt {
 ///
 /// Arguments:
 /// * scope: A Scope object
-/// * segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+/// * segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
 /// first dimension.  Values should be sorted and can be repeated.
 ///
 /// Returns:
@@ -2517,13 +2978,15 @@ class SegmentMax {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
 /// Computes the mean along segments of a tensor.
 ///
-/// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
-/// segments.
+/// Read
+/// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+/// for an explanation of segments.
 ///
 /// Computes a tensor such that
 /// \\(output_i = \frac{\sum_j data_j}{N}\\) where `mean` is
@@ -2538,7 +3001,7 @@ class SegmentMax {
 ///
 /// Arguments:
 /// * scope: A Scope object
-/// * segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+/// * segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
 /// first dimension.  Values should be sorted and can be repeated.
 ///
 /// Returns:
@@ -2552,13 +3015,15 @@ class SegmentMean {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
 /// Computes the minimum along segments of a tensor.
 ///
-/// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
-/// segments.
+/// Read
+/// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+/// for an explanation of segments.
 ///
 /// Computes a tensor such that
 /// \\(output_i = \min_j(data_j)\\) where `min` is over `j` such
@@ -2572,7 +3037,7 @@ class SegmentMean {
 ///
 /// Arguments:
 /// * scope: A Scope object
-/// * segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+/// * segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
 /// first dimension.  Values should be sorted and can be repeated.
 ///
 /// Returns:
@@ -2586,13 +3051,15 @@ class SegmentMin {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
 /// Computes the product along segments of a tensor.
 ///
-/// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
-/// segments.
+/// Read
+/// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+/// for an explanation of segments.
 ///
 /// Computes a tensor such that
 /// \\(output_i = \prod_j data_j\\) where the product is over `j` such
@@ -2606,7 +3073,7 @@ class SegmentMin {
 ///
 /// Arguments:
 /// * scope: A Scope object
-/// * segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+/// * segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
 /// first dimension.  Values should be sorted and can be repeated.
 ///
 /// Returns:
@@ -2620,13 +3087,15 @@ class SegmentProd {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
 /// Computes the sum along segments of a tensor.
 ///
-/// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
-/// segments.
+/// Read
+/// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+/// for an explanation of segments.
 ///
 /// Computes a tensor such that
 /// \\(output_i = \sum_j data_j\\) where sum is over `j` such
@@ -2640,7 +3109,7 @@ class SegmentProd {
 ///
 /// Arguments:
 /// * scope: A Scope object
-/// * segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+/// * segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
 /// first dimension.  Values should be sorted and can be repeated.
 ///
 /// Returns:
@@ -2654,6 +3123,7 @@ class SegmentSum {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -2715,6 +3185,7 @@ class Where3 {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -2734,6 +3205,7 @@ class Sigmoid {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -2755,6 +3227,7 @@ class Sign {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -2772,6 +3245,7 @@ class Sin {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -2789,15 +3263,18 @@ class Sinh {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
 /// Multiply matrix "a" by matrix "b".
 ///
 /// The inputs must be two-dimensional matrices and the inner dimension of "a" must
-/// match the outer dimension of "b". This op is optimized for the case where at
-/// least one of "a" or "b" is sparse. The breakeven for using this versus a dense
-/// matrix multiply on one platform was 30% zero values in the sparse matrix.
+/// match the outer dimension of "b". Both "a" and "b" must be `Tensor`s not
+/// `SparseTensor`s.  This op is optimized for the case where at least one of "a" or
+/// "b" is sparse, in the sense that they have a large proportion of zero values.
+/// The breakeven for using this versus a dense matrix multiply on one platform was
+/// 30% zero values in the sparse matrix.
 ///
 /// The gradient computation of this operation will only take advantage of sparsity
 /// in the input gradient when that gradient comes from a Relu.
@@ -2812,28 +3289,28 @@ class SparseMatMul {
   /// Optional attribute setters for SparseMatMul
   struct Attrs {
     /// Defaults to false
-    Attrs TransposeA(bool x) {
+    TF_MUST_USE_RESULT Attrs TransposeA(bool x) {
       Attrs ret = *this;
       ret.transpose_a_ = x;
       return ret;
     }
 
     /// Defaults to false
-    Attrs TransposeB(bool x) {
+    TF_MUST_USE_RESULT Attrs TransposeB(bool x) {
       Attrs ret = *this;
       ret.transpose_b_ = x;
       return ret;
     }
 
     /// Defaults to false
-    Attrs AIsSparse(bool x) {
+    TF_MUST_USE_RESULT Attrs AIsSparse(bool x) {
       Attrs ret = *this;
       ret.a_is_sparse_ = x;
       return ret;
     }
 
     /// Defaults to false
-    Attrs BIsSparse(bool x) {
+    TF_MUST_USE_RESULT Attrs BIsSparse(bool x) {
       Attrs ret = *this;
       ret.b_is_sparse_ = x;
       return ret;
@@ -2865,13 +3342,15 @@ class SparseMatMul {
     return Attrs().BIsSparse(x);
   }
 
+  Operation operation;
   ::tensorflow::Output product;
 };
 
 /// Computes the mean along sparse segments of a tensor.
 ///
-/// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
-/// segments.
+/// Read
+/// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+/// for an explanation of segments.
 ///
 /// Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
 /// dimension, selecting a subset of dimension 0, specified by `indices`.
@@ -2892,6 +3371,7 @@ class SparseSegmentMean {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -2918,6 +3398,39 @@ class SparseSegmentMeanGrad {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
+  ::tensorflow::Output output;
+};
+
+/// Computes the mean along sparse segments of a tensor.
+///
+/// Like `SparseSegmentMean`, but allows missing ids in `segment_ids`. If an id is
+/// misisng, the `output` tensor at that position will be zeroed.
+///
+/// Read
+/// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+/// for an explanation of segments.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * indices: A 1-D tensor. Has same rank as `segment_ids`.
+/// * segment_ids: A 1-D tensor. Values should be sorted and can be repeated.
+/// * num_segments: Should equal the number of distinct segment IDs.
+///
+/// Returns:
+/// * `Output`: Has same shape as data, except for dimension 0 which has size
+/// `num_segments`.
+class SparseSegmentMeanWithNumSegments {
+ public:
+  SparseSegmentMeanWithNumSegments(const ::tensorflow::Scope& scope,
+                                 ::tensorflow::Input data, ::tensorflow::Input
+                                 indices, ::tensorflow::Input segment_ids,
+                                 ::tensorflow::Input num_segments);
+  operator ::tensorflow::Output() const { return output; }
+  operator ::tensorflow::Input() const { return output; }
+  ::tensorflow::Node* node() const { return output.node(); }
+
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -2925,8 +3438,9 @@ class SparseSegmentMeanGrad {
 ///
 /// N is the size of the segment being reduced.
 ///
-/// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
-/// segments.
+/// Read
+/// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+/// for an explanation of segments.
 ///
 /// Arguments:
 /// * scope: A Scope object
@@ -2945,6 +3459,7 @@ class SparseSegmentSqrtN {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -2971,13 +3486,49 @@ class SparseSegmentSqrtNGrad {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
+  ::tensorflow::Output output;
+};
+
+/// Computes the sum along sparse segments of a tensor divided by the sqrt of N.
+///
+/// N is the size of the segment being reduced.
+///
+/// Like `SparseSegmentSqrtN`, but allows missing ids in `segment_ids`. If an id is
+/// misisng, the `output` tensor at that position will be zeroed.
+///
+/// Read
+/// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+/// for an explanation of segments.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * indices: A 1-D tensor. Has same rank as `segment_ids`.
+/// * segment_ids: A 1-D tensor. Values should be sorted and can be repeated.
+/// * num_segments: Should equal the number of distinct segment IDs.
+///
+/// Returns:
+/// * `Output`: Has same shape as data, except for dimension 0 which
+/// has size `k`, the number of segments.
+class SparseSegmentSqrtNWithNumSegments {
+ public:
+  SparseSegmentSqrtNWithNumSegments(const ::tensorflow::Scope& scope,
+                                  ::tensorflow::Input data, ::tensorflow::Input
+                                  indices, ::tensorflow::Input segment_ids,
+                                  ::tensorflow::Input num_segments);
+  operator ::tensorflow::Output() const { return output; }
+  operator ::tensorflow::Input() const { return output; }
+  ::tensorflow::Node* node() const { return output.node(); }
+
+  Operation operation;
   ::tensorflow::Output output;
 };
 
 /// Computes the sum along sparse segments of a tensor.
 ///
-/// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
-/// segments.
+/// Read
+/// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+/// for an explanation of segments.
 ///
 /// Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
 /// dimension, selecting a subset of dimension 0, specified by `indices`.
@@ -3021,6 +3572,60 @@ class SparseSegmentSum {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
+  ::tensorflow::Output output;
+};
+
+/// Computes the sum along sparse segments of a tensor.
+///
+/// Like `SparseSegmentSum`, but allows missing ids in `segment_ids`. If an id is
+/// misisng, the `output` tensor at that position will be zeroed.
+///
+/// Read
+/// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+/// for an explanation of segments.
+///
+/// For example:
+///
+/// ```python
+/// c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
+///
+/// tf.sparse_segment_sum_with_num_segments(
+///     c, tf.constant([0, 1]), tf.constant([0, 0]), num_segments=3)
+/// # => [[0 0 0 0]
+/// #     [0 0 0 0]
+/// #     [0 0 0 0]]
+///
+/// tf.sparse_segment_sum_with_num_segments(c,
+///                                         tf.constant([0, 1]),
+///                                         tf.constant([0, 2],
+///                                         num_segments=4))
+/// # => [[ 1  2  3  4]
+/// #     [ 0  0  0  0]
+/// #     [-1 -2 -3 -4]
+/// #     [ 0  0  0  0]]
+/// ```
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * indices: A 1-D tensor. Has same rank as `segment_ids`.
+/// * segment_ids: A 1-D tensor. Values should be sorted and can be repeated.
+/// * num_segments: Should equal the number of distinct segment IDs.
+///
+/// Returns:
+/// * `Output`: Has same shape as data, except for dimension 0 which
+/// has size `num_segments`.
+class SparseSegmentSumWithNumSegments {
+ public:
+  SparseSegmentSumWithNumSegments(const ::tensorflow::Scope& scope,
+                                ::tensorflow::Input data, ::tensorflow::Input
+                                indices, ::tensorflow::Input segment_ids,
+                                ::tensorflow::Input num_segments);
+  operator ::tensorflow::Output() const { return output; }
+  operator ::tensorflow::Input() const { return output; }
+  ::tensorflow::Node* node() const { return output.node(); }
+
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -3040,6 +3645,7 @@ class Sqrt {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -3059,6 +3665,7 @@ class Square {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -3080,6 +3687,7 @@ class SquaredDifference {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -3104,6 +3712,7 @@ class Subtract {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 typedef Subtract Sub;
@@ -3118,7 +3727,8 @@ typedef Subtract Sub;
 /// Arguments:
 /// * scope: A Scope object
 /// * input: The tensor to reduce.
-/// * axis: The dimensions to reduce.
+/// * axis: The dimensions to reduce. Must be in the range
+/// `[-rank(input), rank(input))`.
 ///
 /// Optional attributes (see `Attrs`):
 /// * keep_dims: If true, retain reduced dimensions with length 1.
@@ -3135,7 +3745,7 @@ class Sum {
     /// If true, retain reduced dimensions with length 1.
     ///
     /// Defaults to false
-    Attrs KeepDims(bool x) {
+    TF_MUST_USE_RESULT Attrs KeepDims(bool x) {
       Attrs ret = *this;
       ret.keep_dims_ = x;
       return ret;
@@ -3155,6 +3765,7 @@ class Sum {
     return Attrs().KeepDims(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 typedef Sum ReduceSum;
@@ -3173,6 +3784,7 @@ class Tan {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
@@ -3190,13 +3802,14 @@ class Tanh {
   operator ::tensorflow::Input() const { return y; }
   ::tensorflow::Node* node() const { return y.node(); }
 
+  Operation operation;
   ::tensorflow::Output y;
 };
 
 /// Returns x / y element-wise for integer types.
 ///
 /// Truncation designates that negative numbers will round fractional quantities
-/// toward zero. I.e. -7 / 5 = 1. This matches C semantics but it is different
+/// toward zero. I.e. -7 / 5 = -1. This matches C semantics but it is different
 /// than Python semantics. See `FloorDiv` for a division function that matches
 /// Python Semantics.
 ///
@@ -3216,6 +3829,7 @@ class TruncateDiv {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
@@ -3240,36 +3854,47 @@ class TruncateMod {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 
-/// Computes the Max along segments of a tensor.
+/// Computes the maximum along segments of a tensor.
 ///
-/// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
-/// segments.
+/// Read
+/// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+/// for an explanation of segments.
 ///
-/// This operator is similar to the [unsorted segment sum operator](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
-/// Instead of computing the sum over segments, it computes the maximum
-/// such that:
+/// This operator is similar to the unsorted segment sum operator found
+/// [(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+/// Instead of computing the sum over segments, it computes the maximum such that:
 ///
-/// \\(output_i = \max_j data_j\\) where max is over `j` such
-/// that `segment_ids[j] == i`.
+/// \\(output_i = \max_{j...} data[j...]\\) where max is over tuples `j...` such
+/// that `segment_ids[j...] == i`.
 ///
-/// If the maximum is empty for a given segment ID `i`, it outputs the smallest possible value for specific numeric type,
-///  `output[i] = numeric_limits<T>::min()`.
+/// If the maximum is empty for a given segment ID `i`, it outputs the smallest
+/// possible value for the specific numeric type,
+/// `output[i] = numeric_limits<T>::lowest()`.
+///
+/// If the given segment ID `i` is negative, then the corresponding value is
+/// dropped, and will not be included in the result.
 ///
 /// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-/// <img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentSum.png" alt>
+/// <img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentMax.png" alt>
 /// </div>
 ///
 /// Arguments:
 /// * scope: A Scope object
-/// * segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
-/// first dimension.
+/// * segment_ids: A tensor whose shape is a prefix of `data.shape`.END
+///   }
+///   out_arg {
+///     name: "output"
+///     description: <<END
+/// Has same shape as data, except for the first `segment_ids.rank`
+/// dimensions, which are replaced with a single dimension which has size
+/// `num_segments`.
 ///
 /// Returns:
-/// * `Output`: Has same shape as data, except for dimension 0 which
-/// has size `num_segments`.
+/// * `Output`: The output tensor.
 class UnsortedSegmentMax {
  public:
   UnsortedSegmentMax(const ::tensorflow::Scope& scope, ::tensorflow::Input data,
@@ -3279,21 +3904,106 @@ class UnsortedSegmentMax {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
+  ::tensorflow::Output output;
+};
+
+/// Computes the minimum along segments of a tensor.
+///
+/// Read
+/// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+/// for an explanation of segments.
+///
+/// This operator is similar to the unsorted segment sum operator found
+/// [(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+/// Instead of computing the sum over segments, it computes the minimum such that:
+///
+/// \\(output_i = \min_{j...} data_[j...]\\) where min is over tuples `j...` such
+/// that `segment_ids[j...] == i`.
+///
+/// If the minimum is empty for a given segment ID `i`, it outputs the largest
+/// possible value for the specific numeric type,
+/// `output[i] = numeric_limits<T>::max()`.
+///
+/// If the given segment ID `i` is negative, then the corresponding value is
+/// dropped, and will not be included in the result.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * segment_ids: A tensor whose shape is a prefix of `data.shape`.
+///
+/// Returns:
+/// * `Output`: Has same shape as data, except for the first `segment_ids.rank`
+/// dimensions, which are replaced with a single dimension which has size
+/// `num_segments`.
+class UnsortedSegmentMin {
+ public:
+  UnsortedSegmentMin(const ::tensorflow::Scope& scope, ::tensorflow::Input data,
+                   ::tensorflow::Input segment_ids, ::tensorflow::Input
+                   num_segments);
+  operator ::tensorflow::Output() const { return output; }
+  operator ::tensorflow::Input() const { return output; }
+  ::tensorflow::Node* node() const { return output.node(); }
+
+  Operation operation;
+  ::tensorflow::Output output;
+};
+
+/// Computes the product along segments of a tensor.
+///
+/// Read
+/// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+/// for an explanation of segments.
+///
+/// This operator is similar to the unsorted segment sum operator found
+/// [(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+/// Instead of computing the sum over segments, it computes the product of all
+/// entries belonging to a segment such that:
+///
+/// \\(output_i = \prod_{j...} data[j...]\\) where the product is over tuples
+/// `j...` such that `segment_ids[j...] == i`.
+///
+/// If there is no entry for a given segment ID `i`, it outputs 1.
+///
+/// If the given segment ID `i` is negative, then the corresponding value is
+/// dropped, and will not be included in the result.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * segment_ids: A tensor whose shape is a prefix of `data.shape`.
+///
+/// Returns:
+/// * `Output`: Has same shape as data, except for the first `segment_ids.rank`
+/// dimensions, which are replaced with a single dimension which has size
+/// `num_segments`.
+class UnsortedSegmentProd {
+ public:
+  UnsortedSegmentProd(const ::tensorflow::Scope& scope, ::tensorflow::Input data,
+                    ::tensorflow::Input segment_ids, ::tensorflow::Input
+                    num_segments);
+  operator ::tensorflow::Output() const { return output; }
+  operator ::tensorflow::Input() const { return output; }
+  ::tensorflow::Node* node() const { return output.node(); }
+
+  Operation operation;
   ::tensorflow::Output output;
 };
 
 /// Computes the sum along segments of a tensor.
 ///
-/// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
-/// segments.
+/// Read
+/// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+/// for an explanation of segments.
 ///
 /// Computes a tensor such that
-/// `(output[i] = sum_{j...} data[j...]` where the sum is over tuples `j...` such
+/// \\(output[i] = \sum_{j...} data[j...]\\) where the sum is over tuples `j...` such
 /// that `segment_ids[j...] == i`.  Unlike `SegmentSum`, `segment_ids`
 /// need not be sorted and need not cover all values in the full
 /// range of valid values.
 ///
 /// If the sum is empty for a given segment ID `i`, `output[i] = 0`.
+/// If the given segment ID `i` is negative, the value is dropped and will not be
+/// added to the sum of the segment.
 ///
 /// `num_segments` should equal the number of distinct segment IDs.
 ///
@@ -3318,7 +4028,46 @@ class UnsortedSegmentSum {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
+};
+
+/// Returns 0 if x == 0, and x / y otherwise, elementwise.
+///
+/// Arguments:
+/// * scope: A Scope object
+///
+/// Returns:
+/// * `Output`: The z tensor.
+class Xdivy {
+ public:
+  Xdivy(const ::tensorflow::Scope& scope, ::tensorflow::Input x,
+      ::tensorflow::Input y);
+  operator ::tensorflow::Output() const { return z; }
+  operator ::tensorflow::Input() const { return z; }
+  ::tensorflow::Node* node() const { return z.node(); }
+
+  Operation operation;
+  ::tensorflow::Output z;
+};
+
+/// Returns 0 if x == 0, and x * log(y) otherwise, elementwise.
+///
+/// Arguments:
+/// * scope: A Scope object
+///
+/// Returns:
+/// * `Output`: The z tensor.
+class Xlogy {
+ public:
+  Xlogy(const ::tensorflow::Scope& scope, ::tensorflow::Input x,
+      ::tensorflow::Input y);
+  operator ::tensorflow::Output() const { return z; }
+  operator ::tensorflow::Input() const { return z; }
+  ::tensorflow::Node* node() const { return z.node(); }
+
+  Operation operation;
+  ::tensorflow::Output z;
 };
 
 /// Compute the Hurwitz zeta function \\(\zeta(x, q)\\).
@@ -3341,6 +4090,7 @@ class Zeta {
   operator ::tensorflow::Input() const { return z; }
   ::tensorflow::Node* node() const { return z.node(); }
 
+  Operation operation;
   ::tensorflow::Output z;
 };
 

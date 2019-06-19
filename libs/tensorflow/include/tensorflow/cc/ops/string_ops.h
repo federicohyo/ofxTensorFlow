@@ -47,7 +47,7 @@ class AsString {
     /// Only used if precision > -1.
     ///
     /// Defaults to -1
-    Attrs Precision(int64 x) {
+    TF_MUST_USE_RESULT Attrs Precision(int64 x) {
       Attrs ret = *this;
       ret.precision_ = x;
       return ret;
@@ -56,7 +56,7 @@ class AsString {
     /// Use scientific notation for floating point numbers.
     ///
     /// Defaults to false
-    Attrs Scientific(bool x) {
+    TF_MUST_USE_RESULT Attrs Scientific(bool x) {
       Attrs ret = *this;
       ret.scientific_ = x;
       return ret;
@@ -66,7 +66,7 @@ class AsString {
     /// floating point numbers.
     ///
     /// Defaults to false
-    Attrs Shortest(bool x) {
+    TF_MUST_USE_RESULT Attrs Shortest(bool x) {
       Attrs ret = *this;
       ret.shortest_ = x;
       return ret;
@@ -77,7 +77,7 @@ class AsString {
     /// Only used if width > -1.
     ///
     /// Defaults to -1
-    Attrs Width(int64 x) {
+    TF_MUST_USE_RESULT Attrs Width(int64 x) {
       Attrs ret = *this;
       ret.width_ = x;
       return ret;
@@ -87,7 +87,7 @@ class AsString {
     /// Another typical value is '0'.  String cannot be longer than 1 character.
     ///
     /// Defaults to ""
-    Attrs Fill(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs Fill(StringPiece x) {
       Attrs ret = *this;
       ret.fill_ = x;
       return ret;
@@ -122,6 +122,7 @@ class AsString {
     return Attrs().Fill(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -143,6 +144,7 @@ class DecodeBase64 {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -171,7 +173,7 @@ class EncodeBase64 {
     /// Bool whether padding is applied at the ends.
     ///
     /// Defaults to false
-    Attrs Pad(bool x) {
+    TF_MUST_USE_RESULT Attrs Pad(bool x) {
       Attrs ret = *this;
       ret.pad_ = x;
       return ret;
@@ -190,15 +192,18 @@ class EncodeBase64 {
     return Attrs().Pad(x);
   }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
 /// Joins a string Tensor across the given dimensions.
 ///
 /// Computes the string join across dimensions in the given string Tensor of shape
-/// `[d_0, d_1, ..., d_n-1]`.  Returns a new Tensor created by joining the input
+/// `[\\(d_0, d_1, ..., d_{n-1}\\)]`.  Returns a new Tensor created by joining the input
 /// strings with the given separator (default: empty string).  Negative indices are
-/// counted backwards from the end, with `-1` being equivalent to `n - 1`.
+/// counted backwards from the end, with `-1` being equivalent to `n - 1`.  If
+/// indices are not specified, joins across all dimensions beginning from `n - 1`
+/// through `0`.
 ///
 /// For example:
 ///
@@ -211,9 +216,10 @@ class EncodeBase64 {
 /// tf.reduce_join(a, 0, keep_dims=True) ==> [["ac", "bd"]]
 /// tf.reduce_join(a, 1, keep_dims=True) ==> [["ab"], ["cd"]]
 /// tf.reduce_join(a, 0, separator=".") ==> ["a.c", "b.d"]
-/// tf.reduce_join(a, [0, 1]) ==> ["acbd"]
-/// tf.reduce_join(a, [1, 0]) ==> ["abcd"]
-/// tf.reduce_join(a, []) ==> ["abcd"]
+/// tf.reduce_join(a, [0, 1]) ==> "acbd"
+/// tf.reduce_join(a, [1, 0]) ==> "abcd"
+/// tf.reduce_join(a, []) ==> [["a", "b"], ["c", "d"]]
+/// tf.reduce_join(a) = tf.reduce_join(a, [1, 0]) ==> "abcd"
 /// ```
 ///
 /// Arguments:
@@ -237,7 +243,7 @@ class ReduceJoin {
     /// If `True`, retain reduced dimensions with length `1`.
     ///
     /// Defaults to false
-    Attrs KeepDims(bool x) {
+    TF_MUST_USE_RESULT Attrs KeepDims(bool x) {
       Attrs ret = *this;
       ret.keep_dims_ = x;
       return ret;
@@ -246,7 +252,7 @@ class ReduceJoin {
     /// The separator to use when joining.
     ///
     /// Defaults to ""
-    Attrs Separator(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs Separator(StringPiece x) {
       Attrs ret = *this;
       ret.separator_ = x;
       return ret;
@@ -271,6 +277,155 @@ class ReduceJoin {
     return Attrs().Separator(x);
   }
 
+  Operation operation;
+  ::tensorflow::Output output;
+};
+
+/// Check if the input matches the regex pattern.
+///
+/// The input is a string tensor of any shape. The pattern is a scalar
+/// string tensor which is applied to every element of the input tensor.
+/// The boolean values (True or False) of the output tensor indicate
+/// if the input matches the regex pattern provided.
+///
+/// The pattern follows the re2 syntax (https://github.com/google/re2/wiki/Syntax)
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * input: A string tensor of the text to be processed.
+/// * pattern: A scalar string tensor containing the regular expression to match the input.
+///
+/// Returns:
+/// * `Output`: A bool tensor with the same shape as `input`.
+class RegexFullMatch {
+ public:
+  RegexFullMatch(const ::tensorflow::Scope& scope, ::tensorflow::Input input,
+               ::tensorflow::Input pattern);
+  operator ::tensorflow::Output() const { return output; }
+  operator ::tensorflow::Input() const { return output; }
+  ::tensorflow::Node* node() const { return output.node(); }
+
+  Operation operation;
+  ::tensorflow::Output output;
+};
+
+/// Replaces the match of pattern in input with rewrite.
+///
+/// It follows the re2 syntax (https://github.com/google/re2/wiki/Syntax)
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * input: The text to be processed.
+/// * pattern: The regular expression to match the input.
+/// * rewrite: The rewrite to be applied to the matched expresion.
+///
+/// Optional attributes (see `Attrs`):
+/// * replace_global: If True, the replacement is global, otherwise the replacement
+/// is done only on the first match.
+///
+/// Returns:
+/// * `Output`: The text after applying pattern and rewrite.
+class RegexReplace {
+ public:
+  /// Optional attribute setters for RegexReplace
+  struct Attrs {
+    /// If True, the replacement is global, otherwise the replacement
+    /// is done only on the first match.
+    ///
+    /// Defaults to true
+    TF_MUST_USE_RESULT Attrs ReplaceGlobal(bool x) {
+      Attrs ret = *this;
+      ret.replace_global_ = x;
+      return ret;
+    }
+
+    bool replace_global_ = true;
+  };
+  RegexReplace(const ::tensorflow::Scope& scope, ::tensorflow::Input input,
+             ::tensorflow::Input pattern, ::tensorflow::Input rewrite);
+  RegexReplace(const ::tensorflow::Scope& scope, ::tensorflow::Input input,
+             ::tensorflow::Input pattern, ::tensorflow::Input rewrite, const
+             RegexReplace::Attrs& attrs);
+  operator ::tensorflow::Output() const { return output; }
+  operator ::tensorflow::Input() const { return output; }
+  ::tensorflow::Node* node() const { return output.node(); }
+
+  static Attrs ReplaceGlobal(bool x) {
+    return Attrs().ReplaceGlobal(x);
+  }
+
+  Operation operation;
+  ::tensorflow::Output output;
+};
+
+/// Formats a string template using a list of tensors.
+///
+/// Formats a string template using a list of tensors, pretty-printing tensor summaries.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * inputs: The list of tensors to format into the placeholder string.
+///
+/// Optional attributes (see `Attrs`):
+/// * template_: A string, the template to format tensor summaries into.
+/// * placeholder: A string, at each placeholder in the template a subsequent tensor summary will be inserted.
+/// * summarize: When formatting the tensor summaries print the first and last summarize entries of each tensor dimension.
+///
+/// Returns:
+/// * `Output`: = The resulting string scalar.
+class StringFormat {
+ public:
+  /// Optional attribute setters for StringFormat
+  struct Attrs {
+    /// A string, the template to format tensor summaries into.
+    ///
+    /// Defaults to "%s"
+    TF_MUST_USE_RESULT Attrs Template(StringPiece x) {
+      Attrs ret = *this;
+      ret.template_ = x;
+      return ret;
+    }
+
+    /// A string, at each placeholder in the template a subsequent tensor summary will be inserted.
+    ///
+    /// Defaults to "%s"
+    TF_MUST_USE_RESULT Attrs Placeholder(StringPiece x) {
+      Attrs ret = *this;
+      ret.placeholder_ = x;
+      return ret;
+    }
+
+    /// When formatting the tensor summaries print the first and last summarize entries of each tensor dimension.
+    ///
+    /// Defaults to 3
+    TF_MUST_USE_RESULT Attrs Summarize(int64 x) {
+      Attrs ret = *this;
+      ret.summarize_ = x;
+      return ret;
+    }
+
+    StringPiece template_ = "%s";
+    StringPiece placeholder_ = "%s";
+    int64 summarize_ = 3;
+  };
+  StringFormat(const ::tensorflow::Scope& scope, ::tensorflow::InputList inputs);
+  StringFormat(const ::tensorflow::Scope& scope, ::tensorflow::InputList inputs,
+             const StringFormat::Attrs& attrs);
+  operator ::tensorflow::Output() const { return output; }
+  operator ::tensorflow::Input() const { return output; }
+  ::tensorflow::Node* node() const { return output.node(); }
+
+  static Attrs Template(StringPiece x) {
+    return Attrs().Template(x);
+  }
+  static Attrs Placeholder(StringPiece x) {
+    return Attrs().Placeholder(x);
+  }
+  static Attrs Summarize(int64 x) {
+    return Attrs().Summarize(x);
+  }
+
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -296,7 +451,7 @@ class StringJoin {
     /// string, an optional join separator.
     ///
     /// Defaults to ""
-    Attrs Separator(StringPiece x) {
+    TF_MUST_USE_RESULT Attrs Separator(StringPiece x) {
       Attrs ret = *this;
       ret.separator_ = x;
       return ret;
@@ -315,6 +470,59 @@ class StringJoin {
     return Attrs().Separator(x);
   }
 
+  Operation operation;
+  ::tensorflow::Output output;
+};
+
+/// String lengths of `input`.
+///
+/// Computes the length of each string given in the input tensor.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * input: The string for which to compute the length.
+///
+/// Optional attributes (see `Attrs`):
+/// * unit: The unit that is counted to compute string length.  One of: `"BYTE"` (for
+/// the number of bytes in each string) or `"UTF8_CHAR"` (for the number of UTF-8
+/// encoded Unicode code points in each string).  Results are undefined
+/// if `unit=UTF8_CHAR` and the `input` strings do not contain structurally
+/// valid UTF-8.
+///
+/// Returns:
+/// * `Output`: Integer tensor that has the same shape as `input`. The output contains the
+/// element-wise string lengths of `input`.
+class StringLength {
+ public:
+  /// Optional attribute setters for StringLength
+  struct Attrs {
+    /// The unit that is counted to compute string length.  One of: `"BYTE"` (for
+    /// the number of bytes in each string) or `"UTF8_CHAR"` (for the number of UTF-8
+    /// encoded Unicode code points in each string).  Results are undefined
+    /// if `unit=UTF8_CHAR` and the `input` strings do not contain structurally
+    /// valid UTF-8.
+    ///
+    /// Defaults to "BYTE"
+    TF_MUST_USE_RESULT Attrs Unit(StringPiece x) {
+      Attrs ret = *this;
+      ret.unit_ = x;
+      return ret;
+    }
+
+    StringPiece unit_ = "BYTE";
+  };
+  StringLength(const ::tensorflow::Scope& scope, ::tensorflow::Input input);
+  StringLength(const ::tensorflow::Scope& scope, ::tensorflow::Input input, const
+             StringLength::Attrs& attrs);
+  operator ::tensorflow::Output() const { return output; }
+  operator ::tensorflow::Input() const { return output; }
+  ::tensorflow::Node* node() const { return output.node(); }
+
+  static Attrs Unit(StringPiece x) {
+    return Attrs().Unit(x);
+  }
+
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -346,6 +554,9 @@ class StringJoin {
 /// * input: 1-D. Strings to split.
 /// * delimiter: 0-D. Delimiter characters (bytes), or empty string.
 ///
+/// Optional attributes (see `Attrs`):
+/// * skip_empty: A `bool`. If `True`, skip the empty strings from the result.
+///
 /// Returns:
 /// * `Output` indices: A dense matrix of int64 representing the indices of the sparse tensor.
 /// * `Output` values: A vector of strings corresponding to the splited values.
@@ -354,12 +565,120 @@ class StringJoin {
 /// of tokens in a single input entry.
 class StringSplit {
  public:
+  /// Optional attribute setters for StringSplit
+  struct Attrs {
+    /// A `bool`. If `True`, skip the empty strings from the result.
+    ///
+    /// Defaults to true
+    TF_MUST_USE_RESULT Attrs SkipEmpty(bool x) {
+      Attrs ret = *this;
+      ret.skip_empty_ = x;
+      return ret;
+    }
+
+    bool skip_empty_ = true;
+  };
   StringSplit(const ::tensorflow::Scope& scope, ::tensorflow::Input input,
             ::tensorflow::Input delimiter);
+  StringSplit(const ::tensorflow::Scope& scope, ::tensorflow::Input input,
+            ::tensorflow::Input delimiter, const StringSplit::Attrs& attrs);
 
+  static Attrs SkipEmpty(bool x) {
+    return Attrs().SkipEmpty(x);
+  }
+
+  Operation operation;
   ::tensorflow::Output indices;
   ::tensorflow::Output values;
   ::tensorflow::Output shape;
+};
+
+/// Split elements of `source` based on `sep` into a `SparseTensor`.
+///
+/// Let N be the size of source (typically N will be the batch size). Split each
+/// element of `source` based on `sep` and return a `SparseTensor`
+/// containing the split tokens. Empty tokens are ignored.
+///
+/// For example, N = 2, source[0] is 'hello world' and source[1] is 'a b c',
+/// then the output will be
+/// ```
+/// st.indices = [0, 0;
+///               0, 1;
+///               1, 0;
+///               1, 1;
+///               1, 2]
+/// st.shape = [2, 3]
+/// st.values = ['hello', 'world', 'a', 'b', 'c']
+/// ```
+///
+/// If `sep` is given, consecutive delimiters are not grouped together and are
+/// deemed to delimit empty strings. For example, source of `"1<>2<><>3"` and
+/// sep of `"<>"` returns `["1", "2", "", "3"]`. If `sep` is None or an empty
+/// string, consecutive whitespace are regarded as a single separator, and the
+/// result will contain no empty strings at the startor end if the string has
+/// leading or trailing whitespace.
+///
+/// Note that the above mentioned behavior matches python's str.split.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * input: `1-D` string `Tensor`, the strings to split.
+/// * sep: `0-D` string `Tensor`, the delimiter character.
+///
+/// Optional attributes (see `Attrs`):
+/// * maxsplit: An `int`. If `maxsplit > 0`, limit of the split of the result.
+///
+/// Returns:
+/// * `Output` indices
+/// * `Output` values
+/// * `Output` shape
+class StringSplitV2 {
+ public:
+  /// Optional attribute setters for StringSplitV2
+  struct Attrs {
+    /// An `int`. If `maxsplit > 0`, limit of the split of the result.
+    ///
+    /// Defaults to -1
+    TF_MUST_USE_RESULT Attrs Maxsplit(int64 x) {
+      Attrs ret = *this;
+      ret.maxsplit_ = x;
+      return ret;
+    }
+
+    int64 maxsplit_ = -1;
+  };
+  StringSplitV2(const ::tensorflow::Scope& scope, ::tensorflow::Input input,
+              ::tensorflow::Input sep);
+  StringSplitV2(const ::tensorflow::Scope& scope, ::tensorflow::Input input,
+              ::tensorflow::Input sep, const StringSplitV2::Attrs& attrs);
+
+  static Attrs Maxsplit(int64 x) {
+    return Attrs().Maxsplit(x);
+  }
+
+  Operation operation;
+  ::tensorflow::Output indices;
+  ::tensorflow::Output values;
+  ::tensorflow::Output shape;
+};
+
+/// Strip leading and trailing whitespaces from the Tensor.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * input: A string `Tensor` of any shape.
+///
+/// Returns:
+/// * `Output`: A string `Tensor` of the same shape as the input.
+class StringStrip {
+ public:
+  StringStrip(const ::tensorflow::Scope& scope, ::tensorflow::Input input);
+  operator ::tensorflow::Output() const { return output; }
+  operator ::tensorflow::Input() const { return output; }
+  ::tensorflow::Node* node() const { return output.node(); }
+
+  Operation operation;
+  ::tensorflow::Output output;
 };
 
 /// Converts each string in the input Tensor to its hash mod by a number of buckets.
@@ -385,6 +704,7 @@ class StringToHashBucket {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -412,6 +732,7 @@ class StringToHashBucketFast {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -446,6 +767,7 @@ class StringToHashBucketStrong {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
   ::tensorflow::Output output;
 };
 
@@ -457,8 +779,10 @@ class StringToHashBucketStrong {
 /// If `len` defines a substring that would extend beyond the length of the input
 /// string, then as many characters as possible are used.
 ///
-/// If `pos` is negative or specifies a character index larger than any of the input
-/// strings, then an `InvalidArgumentError` is thrown.
+/// A negative `pos` indicates distance within the string backwards from the end.
+///
+/// If `pos` specifies an index which is out of range for any of the input strings,
+/// then an `InvalidArgumentError` is thrown.
 ///
 /// `pos` and `len` must have the same shape, otherwise a `ValueError` is thrown on
 /// Op creation.
@@ -522,7 +846,7 @@ class StringToHashBucketStrong {
 /// position = [1, 5, 7]
 /// length =   [3, 2, 1]
 ///
-/// output = [b'hir', b'ee', b'n"]
+/// output = [b'hir', b'ee', b'n']
 /// ```
 ///
 /// Arguments:
@@ -541,6 +865,32 @@ class Substr {
   operator ::tensorflow::Input() const { return output; }
   ::tensorflow::Node* node() const { return output.node(); }
 
+  Operation operation;
+  ::tensorflow::Output output;
+};
+
+/// Determine the script codes of a given tensor of Unicode integer code points.
+///
+/// This operation converts Unicode code points to script codes corresponding to
+/// each code point. Script codes correspond to International Components for
+/// Unicode (ICU) UScriptCode values. See http://icu-project.org/apiref/icu4c/uscript_8h.html.
+/// Returns -1 (USCRIPT_INVALID_CODE) for invalid codepoints. Output shape will
+/// match input shape.
+///
+/// Arguments:
+/// * scope: A Scope object
+/// * input: A Tensor of int32 Unicode code points.
+///
+/// Returns:
+/// * `Output`: A Tensor of int32 script codes corresponding to each input code point.
+class UnicodeScript {
+ public:
+  UnicodeScript(const ::tensorflow::Scope& scope, ::tensorflow::Input input);
+  operator ::tensorflow::Output() const { return output; }
+  operator ::tensorflow::Input() const { return output; }
+  ::tensorflow::Node* node() const { return output.node(); }
+
+  Operation operation;
   ::tensorflow::Output output;
 };
 
