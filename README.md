@@ -1,5 +1,13 @@
 
 # ofxMSATensorFlow
+@misc{engstrom2016faststyletransfer,
+    author = {Memo Akten},
+    title = {ofxMSATensorflow},
+    year = {2017},
+    howpublished = {\url{https://github.com/memo/ofxMSATensorFlow/}},
+    note = {commit xxxxxxx}
+}
+
 [OpenFrameworks](http://openframeworks.cc) addon for Google's graph based machine intelligence / deep learning library [TensorFlow](https://www.tensorflow.org).
 
 This update includes the newly released **TensorFlow r1.1** and has been tested with **openFrameworks 0.9.8**.
