@@ -8,6 +8,7 @@ openFrameworksDebug.a
 openFrameworksUniversal.a
 libs/openFrameworksCompiled/lib/*/*
 !libs/openFrameworksCompiled/lib/*/.gitkeep
+libs/google/lib/linux64/libprotoc.a
 
 # apothecary
 scripts/apothecary/build
