@@ -1,7 +1,7 @@
 
 # ofxMSATensorFlow
 ```
-@misc{engstrom2016faststyletransfer,
+@misc{memoakten2017,
     author = {Memo Akten},
     title = {ofxMSATensorflow},
     year = {2017},
