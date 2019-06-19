@@ -1,5 +1,6 @@
 
 # ofxMSATensorFlow
+```
 @misc{engstrom2016faststyletransfer,
     author = {Memo Akten},
     title = {ofxMSATensorflow},
@@ -7,6 +8,7 @@
     howpublished = {\url{https://github.com/memo/ofxMSATensorFlow/}},
     note = {commit xxxxxxx}
 }
+```
 
 [OpenFrameworks](http://openframeworks.cc) addon for Google's graph based machine intelligence / deep learning library [TensorFlow](https://www.tensorflow.org).
 
